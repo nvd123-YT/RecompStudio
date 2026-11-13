@@ -28,6 +28,8 @@ class ManagedToolTests(unittest.TestCase):
 
     def test_zip_extraction_preserves_executable_permissions(self):
         import stat
+        if os.name == "nt":
+            self.skipTest("Windows does not expose Unix executable permission bits.")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             archive_path = root / "tool.zip"

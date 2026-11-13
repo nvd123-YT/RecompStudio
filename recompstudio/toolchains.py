@@ -5,6 +5,7 @@ RecompStudio application or an individual game repository.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -32,6 +33,7 @@ class ToolchainRelease:
     asset_name: str
     download_url: str
     size: int
+    digest: str = ""
     published_at: str = ""
 
 
@@ -117,6 +119,7 @@ def latest_release(timeout: int = 30) -> ToolchainRelease:
         asset_name=str(asset.get("name", "")),
         download_url=url,
         size=int(asset.get("size") or 0),
+        digest=str(asset.get("digest") or ""),
         published_at=str(data.get("published_at", "")),
     )
 
@@ -215,6 +218,17 @@ def install_latest(progress: Callable[[int, int], None] | None = None,
         temp = Path(temp_name)
         archive_path = temp / release.asset_name
         _download(release.download_url, archive_path, progress)
+        if release.digest.startswith("sha256:"):
+            expected_digest = release.digest.split(":", 1)[1].lower()
+            hasher = hashlib.sha256()
+            with archive_path.open("rb") as downloaded:
+                for block in iter(lambda: downloaded.read(1024 * 1024), b""):
+                    hasher.update(block)
+            actual_digest = hasher.hexdigest()
+            if actual_digest != expected_digest:
+                raise ToolchainError(
+                    f"Toolchain archive SHA-256 mismatch: expected {expected_digest}, got {actual_digest}."
+                )
         extract_dir = temp / "unpacked"
         extract_dir.mkdir()
         try:

@@ -31,13 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-2022
-            shell: pwsh
-          - os: macos-14
-            shell: bash
-          - os: ubuntu-24.04
-            shell: bash
+        os: [windows-2022, macos-14, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -48,16 +42,31 @@ jobs:
         with:
           cmakeVersion: '~3.30.0'
           ninjaVersion: latest
-      - name: Build project
-        shell: ${{ matrix.shell }}
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          if (Test-Path build.ps1) { ./build.ps1 }
-          elseif (Test-Path build.sh) { bash ./build.sh }
-          elseif (Test-Path CMakeLists.txt) {
+          if (Test-Path build.ps1) {
+            ./build.ps1
+          } elseif (Test-Path CMakeLists.txt) {
             cmake -S . -B build
             cmake --build build --config Release --parallel
+          } else {
+            Write-Error 'Add build.ps1 or a root CMakeLists.txt after completing the game host.'
           }
-          else { Write-Error 'Add a framework-specific build.ps1, build.sh, or CMakeLists.txt before enabling CI.' }
+      - name: Build on macOS and Linux
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ -f build.sh ]; then
+            bash ./build.sh
+          elif [ -f CMakeLists.txt ]; then
+            cmake -S . -B build
+            cmake --build build --config Release --parallel
+          else
+            echo 'Add build.sh or a root CMakeLists.txt after completing the game host.' >&2
+            exit 1
+          fi
 """
 
 GITIGNORE = """# RecompStudio local-only settings and build output

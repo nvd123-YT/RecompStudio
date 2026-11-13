@@ -59,6 +59,7 @@ def clone_frameworks() -> list[dict]:
     eligible = [
         item for item in catalog["frameworks"]
         if item.get("redistributable")
+        and item.get("bundle", True)
         and item.get("category") in {"framework", "integration-fork", "shared-component"}
     ]
     output = []
@@ -143,7 +144,7 @@ def main() -> int:
     included = {item["id"] for item in framework_entries}
     excluded = [{
         "id": item["id"], "name": item["name"],
-        "reason": item.get("redistribution_license", "No upstream licence reviewed"),
+        "reason": item.get("bundle_exclusion_reason") or item.get("redistribution_license", "No upstream licence reviewed"),
         "repository": item["repository"],
     } for item in catalog["frameworks"]
       if item.get("category") in {"framework", "integration-fork", "shared-component"}

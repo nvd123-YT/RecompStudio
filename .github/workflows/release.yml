@@ -66,6 +66,8 @@ jobs:
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item dist/RecompStudio release/RecompStudio -Recurse
           Copy-Item dist/recompstudio-cli.exe release/recompstudio-cli.exe
+          & "dist\\recompstudio-cli.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Packaged Windows CLI smoke test failed." }
           Copy-Item recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
           tar.exe -a -cf release/RecompStudio-${{ matrix.target }}.zip -C release RecompStudio recompstudio-cli.exe UPSTREAM_LICENSES.md
           & "dist\\RecompStudio\\RecompStudio.exe" --startup-smoke-test
@@ -77,7 +79,9 @@ jobs:
         run: |
           pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --osx-bundle-identifier com.nvd123yt.recompstudio --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
           pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
+          codesign --force --sign - dist/recompstudio-cli
           codesign --force --deep --sign - dist/RecompStudio.app
+          ./dist/recompstudio-cli --version
           ./dist/RecompStudio.app/Contents/MacOS/RecompStudio --startup-smoke-test
           mkdir -p release/dmg-root
           cp -R dist/RecompStudio.app release/dmg-root/RecompStudio.app

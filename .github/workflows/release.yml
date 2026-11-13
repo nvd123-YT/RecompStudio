@@ -75,16 +75,16 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
+          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --osx-bundle-identifier com.nvd123yt.recompstudio --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
           pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
+          codesign --force --deep --sign - dist/RecompStudio.app
+          ./dist/RecompStudio.app/Contents/MacOS/RecompStudio --startup-smoke-test
           mkdir -p release/dmg-root
           cp -R dist/RecompStudio.app release/dmg-root/RecompStudio.app
           cp dist/recompstudio-cli release/dmg-root/recompstudio-cli
           cp recompstudio/bundled/UPSTREAM_LICENSES.md release/dmg-root/UPSTREAM_LICENSES.md
           hdiutil create -volname "RecompStudio" -srcfolder release/dmg-root -ov -format UDZO "release/RecompStudio-${{ matrix.target }}.dmg"
           cp recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
-          codesign --force --deep --sign - dist/RecompStudio.app
-          ./dist/RecompStudio.app/Contents/MacOS/RecompStudio --startup-smoke-test
 
       - name: Package Linux AppImage
         if: runner.os == 'Linux'

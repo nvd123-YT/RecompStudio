@@ -107,7 +107,7 @@ firmware/
 *.gg
 *.vb
 *.vboy
-*.md
+*.bin
 *.gen
 *.rom
 *.fds

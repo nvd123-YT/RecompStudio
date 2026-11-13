@@ -135,11 +135,12 @@ def _command_environment(overrides: dict | None = None) -> dict[str, str]:
         override_path = overrides.get("PATH")
         result.update(overrides)
         if override_path is not None:
-            paths: list[str] = []
-            for entry in [*base.get("PATH", "").split(os.pathsep),
-                          *str(override_path).split(os.pathsep)]:
-                if entry and entry not in paths:
-                    paths.append(entry)
+            managed_paths = [entry for entry in base.get("PATH", "").split(os.pathsep) if entry]
+            override_paths = [entry for entry in str(override_path).split(os.pathsep) if entry]
+            # Keep managed executable directories first, but let a framework's
+            # explicit PATH additions precede the inherited system PATH.
+            paths = [entry for entry in managed_paths if entry not in override_paths]
+            paths.extend(entry for entry in override_paths if entry not in paths)
             result["PATH"] = os.pathsep.join(paths)
     return result
 

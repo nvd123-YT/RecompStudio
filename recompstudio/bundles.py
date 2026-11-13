@@ -12,7 +12,16 @@ def bundle_root() -> Path | None:
     candidates: list[Path] = []
     override = os.environ.get("RECOMPSTUDIO_BUNDLED_ROOT")
     if override:
-        candidates.append(Path(override).expanduser())
+        # An explicit override is authoritative. This lets a broken/unavailable
+        # bundle be reported instead of silently falling back to another copy.
+        candidate = Path(override).expanduser()
+        try:
+            candidate = candidate.resolve()
+        except OSError:
+            return None
+        if (candidate / "bundle.json").is_file() or (candidate / "frameworks").is_dir():
+            return candidate
+        return None
     frozen_root = getattr(sys, "_MEIPASS", None)
     if frozen_root:
         candidates.append(Path(frozen_root) / "recompstudio" / "bundled")

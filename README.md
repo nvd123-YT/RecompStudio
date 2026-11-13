@@ -56,7 +56,7 @@ Install clones the upstream repository and recursive submodules. Update fetches 
 
 Game projects pin a specific framework commit as a Git submodule. They move to newer framework revisions only when the project owner chooses **Update Project Framework** and commits the updated submodule pointer. This keeps an existing game project reproducible even as upstream frameworks change frequently.
 
-The app's framework registry is separate from the framework checkouts. **Refresh catalog** updates the list without forcing source updates or requiring a RecompStudio reinstall. Updating the app refreshes its embedded snapshot, while framework updates remain independent after installation.
+The desktop launcher now records fatal startup errors to a per-user log and shows a native system alert even when Tk cannot initialize. The alert asks the user to try reopening once and gives the exact log path. Packaged release jobs also launch the built app in a hidden-window smoke test on each platform before publishing.\n\nThe app's framework registry is separate from the framework checkouts. **Refresh catalog** updates the list without forcing source updates or requiring a RecompStudio reinstall. Updating the app refreshes its embedded snapshot, while framework updates remain independent after installation.
 
 ## Shared compiler/toolchain packs
 
@@ -147,7 +147,7 @@ The project adapters invoke the framework's current generation/build interfaces 
 The release workflow builds a platform-specific self-contained app bundle, framework snapshot, and compiler pack:
 - Windows x64: GUI app directory plus CLI executable in a ZIP.
 - macOS: DMGs containing a real `RecompStudio.app` bundle and CLI binary (Intel and Apple Silicon builds).
-- Linux x86_64: AppImage containing the GUI, CLI, frameworks, and compiler archive.
+- Linux x86_64: AppImage containing the GUI, CLI, frameworks, and compiler archive. Run `RecompStudio.AppImage --cli --version` (or replace `--version` with a CLI command) to use the embedded CLI directly.
 
 Push a `v*` tag to publish GitHub Release assets. `workflow_dispatch` also creates downloadable Actions artifacts for packaging verification. The Linux asset is substantially larger because the bundled Linux compiler/sysroot pack is roughly 833 MB compressed.
 

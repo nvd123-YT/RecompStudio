@@ -68,6 +68,8 @@ jobs:
           Copy-Item dist/recompstudio-cli.exe release/recompstudio-cli.exe
           Copy-Item recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
           tar.exe -a -cf release/RecompStudio-${{ matrix.target }}.zip -C release RecompStudio recompstudio-cli.exe UPSTREAM_LICENSES.md
+          & "dist\\RecompStudio\\RecompStudio.exe" --startup-smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged GUI startup smoke test failed." }
 
       - name: Package macOS app and CLI
         if: runner.os == 'macOS'
@@ -81,6 +83,8 @@ jobs:
           cp recompstudio/bundled/UPSTREAM_LICENSES.md release/dmg-root/UPSTREAM_LICENSES.md
           hdiutil create -volname "RecompStudio" -srcfolder release/dmg-root -ov -format UDZO "release/RecompStudio-${{ matrix.target }}.dmg"
           cp recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
+          codesign --force --deep --sign - dist/RecompStudio.app
+          ./dist/RecompStudio.app/Contents/MacOS/RecompStudio --startup-smoke-test
 
       - name: Package Linux AppImage
         if: runner.os == 'Linux'
@@ -96,6 +100,10 @@ jobs:
           #!/bin/sh
           HERE="$(dirname "$(readlink -f "$0")")"
           export RECOMPSTUDIO_BUNDLED_ROOT="$HERE/usr/bin/RecompStudio/_internal/recompstudio/bundled"
+          if [ "${1:-}" = "--cli" ]; then
+            shift
+            exec "$HERE/usr/bin/recompstudio-cli" "$@"
+          fi
           exec "$HERE/usr/bin/RecompStudio/RecompStudio" "$@"
           EOF
           chmod +x AppDir/AppRun
@@ -151,6 +159,10 @@ jobs:
           PY
           chmod +x appimagetool.AppImage runtime-x86_64
           ARCH=x86_64 APPIMAGETOOL_RUNTIME_FILE=./runtime-x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool.AppImage AppDir "release/RecompStudio-${{ matrix.target }}.AppImage"
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          xvfb-run -a "release/RecompStudio-${{ matrix.target }}.AppImage" --startup-smoke-test
+          "release/RecompStudio-${{ matrix.target }}.AppImage" --cli --version
           cp recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
 
       - uses: actions/upload-artifact@v4

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026.11.13.2",
+  "catalog_version": "2026.11.13.3",
   "catalog_source": "RecompStudio upstream registry",
   "upstream_note": "Framework repositories remain independent upstream projects. RecompStudio stores clean Git checkouts and never vendors or merges their histories. The registry also distinguishes early research, development forks, and title-specific integrations from general-purpose frameworks.",
   "frameworks": [
@@ -263,10 +263,11 @@
       "platform": "Shared",
       "console": "Cross-console networking",
       "category": "shared-component",
-      "repository": "https://github.com/mstan/recomp-net.git",
+      "repository": "https://github.com/RetroPortingToolKit/recomp-net.git",
       "status": "experimental",
       "maintainers": [
-        "mstan"
+        "mstan",
+        "RetroPortingToolKit"
       ],
       "dependencies": [
         "git",
@@ -275,7 +276,7 @@
         "cxx"
       ],
       "description": "Shared networking components for compatible recompilation projects.",
-      "project_docs": "https://github.com/mstan/recomp-net"
+      "project_docs": "https://github.com/RetroPortingToolKit/recomp-net"
     },
     {
       "id": "m68k-recomp-core",

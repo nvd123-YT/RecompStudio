@@ -47,7 +47,8 @@ def _version(command: list[str]) -> str:
 def check_tools() -> list[ToolCheck]:
     results: list[ToolCheck] = []
     for name, command in TOOL_COMMANDS.items():
-        path = shutil.which(command[0])
+        managed_env = toolchain_environment()
+        path = shutil.which(command[0], path=managed_env.get("PATH"))
         results.append(ToolCheck(
             name=name,
             found=bool(path),
@@ -72,9 +73,21 @@ def check_tools() -> list[ToolCheck]:
 def doctor_report() -> dict:
     results = check_tools()
     platform_name = platform.system()
+    pack = active_pack()
+    pack_manifest = None
+    if pack and (pack / "retcomm-toolchain.json").is_file():
+        try:
+            pack_manifest = json.loads((pack / "retcomm-toolchain.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pack_manifest = None
     return {
         "platform": platform_name,
         "python": sys.version.split()[0],
+        "shared_toolchain": {
+            "installed": pack is not None,
+            "version": pack_manifest.get("version") if pack_manifest else None,
+            "path": str(pack) if pack else None,
+        },
         "checks": [asdict(item) for item in results],
         "missing": [item.name for item in results if not item.found],
         "guidance": {

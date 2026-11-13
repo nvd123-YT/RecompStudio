@@ -1,21 +1,49 @@
-"""Locate framework and toolchain resources embedded in a packaged RecompStudio build."""
+"""Locate framework and toolchain resources embedded in RecompStudio packages."""
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 
 def bundle_root() -> Path | None:
-    """Resolve the bundle directory in source, PyInstaller one-dir, or one-file mode."""
+    """Resolve embedded resources for source, GUI, CLI, and AppImage launch modes."""
     candidates: list[Path] = []
+    override = os.environ.get("RECOMPSTUDIO_BUNDLED_ROOT")
+    if override:
+        candidates.append(Path(override).expanduser())
     frozen_root = getattr(sys, "_MEIPASS", None)
     if frozen_root:
         candidates.append(Path(frozen_root) / "recompstudio" / "bundled")
         candidates.append(Path(frozen_root) / "bundled")
+
+    executable_dir = Path(sys.executable).resolve().parent
+    candidates.extend([
+        executable_dir / "RecompStudio" / "_internal" / "recompstudio" / "bundled",
+        executable_dir / "RecompStudio" / "recompstudio" / "bundled",
+        executable_dir / "RecompStudio.app" / "Contents" / "Frameworks" / "recompstudio" / "bundled",
+        executable_dir / "RecompStudio.app" / "Contents" / "Resources" / "recompstudio" / "bundled",
+    ])
+    appdir = os.environ.get("APPDIR")
+    if appdir:
+        app_root = Path(appdir) / "usr" / "bin" / "RecompStudio"
+        candidates.extend([
+            app_root / "_internal" / "recompstudio" / "bundled",
+            app_root / "recompstudio" / "bundled",
+        ])
+
     candidates.append(Path(__file__).resolve().parent / "bundled")
+    seen: set[Path] = set()
     for candidate in candidates:
-        if candidate.is_dir():
+        try:
+            candidate = candidate.resolve()
+        except OSError:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if (candidate / "bundle.json").is_file() or (candidate / "frameworks").is_dir():
             return candidate
     return None
 
@@ -49,8 +77,7 @@ def bundled_toolchain() -> tuple[Path, dict] | None:
     root = bundle_root()
     if root is None:
         return None
-    manifest = bundle_manifest()
-    info = manifest.get("toolchain")
+    info = bundle_manifest().get("toolchain")
     if not isinstance(info, dict):
         return None
     asset = info.get("asset")

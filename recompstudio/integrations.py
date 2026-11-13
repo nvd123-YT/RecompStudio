@@ -271,6 +271,45 @@ def _discover_created_project(workspace: Path, before: set[Path],
     )
 
 
+def _sanitize_psx_project_paths(root: Path) -> None:
+    """Remove host-specific disc paths from Git-tracked PSX wizard output.
+
+    The actual disc is kept in .recompstudio/local.json (gitignored). The
+    framework generator is invoked with --disc explicitly, and the runtime
+    can ask the user to select a disc on first launch.
+    """
+    game_toml = root / "game.toml"
+    if game_toml.is_file():
+        lines = game_toml.read_text(encoding="utf-8").splitlines()
+        safe_lines: list[str] = []
+        in_game_section = False
+        for line in lines:
+            section = re.match(r"^\\s*\\[([^]]+)\\]\\s*(?:#.*)?$", line)
+            if section:
+                in_game_section = section.group(1).strip() == "game"
+            if in_game_section and re.match(r"^\\s*disc\\s*=", line):
+                # 'disc' is a machine-local image path. Do not remove 'discs'
+                # arrays should an upstream template start supporting them.
+                continue
+            safe_lines.append(line)
+        game_toml.write_text("\\n".join(safe_lines) + "\\n", encoding="utf-8")
+
+    probe_json = root / "disc_probe.json"
+    if probe_json.is_file():
+        try:
+            data = json.loads(probe_json.read_text(encoding="utf-8"))
+            cue_path = data.get("cue_path")
+            if isinstance(cue_path, str):
+                data["cue_path"] = re.split(r"[/\\\\]", cue_path)[-1]
+                probe_json.write_text(
+                    json.dumps(data, indent=2) + "\\n", encoding="utf-8"
+                )
+        except (OSError, json.JSONDecodeError, AttributeError):
+            # A malformed upstream diagnostic file should not prevent setup;
+            # the app's own local input path remains safely ignored.
+            pass
+
+
 def _append_setup_log(root: Path, output: str) -> None:
     meta = root / ".recompstudio"
     meta.mkdir(exist_ok=True)
@@ -322,6 +361,7 @@ def _run_psx_wizard(item: dict, name: str, workspace: Path, disc: Path,
 
     output = _run(command, checkout, timeout=7200, env=env)
     root = _discover_created_project(workspace, before, workspace / slug)
+    _sanitize_psx_project_paths(root)
     _write_manifest(root, item, name, "psxrecomp")
     _write_local_settings(root, disc, bios)
     with (root / ".gitignore").open("a", encoding="utf-8") as stream:

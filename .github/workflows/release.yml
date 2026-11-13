@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: recompstudio-package-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package:
     timeout-minutes: 360

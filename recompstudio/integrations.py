@@ -263,7 +263,9 @@ def _install_for_wizard(framework_id: str) -> Path:
     path = manager.path_for(framework_id)
     if not ((path / ".git").exists() or (path / ".git").is_file()):
         manager.install(framework_id)
-    return path
+    # Upstream wizards may write helper files and initialise submodules.
+    # Never run them from the read-only packaged resource directory.
+    return manager._ensure_writable_checkout(framework_id)
 
 
 def _discover_created_project(workspace: Path, before: set[Path],
@@ -773,9 +775,14 @@ def update_project_framework(project_path: Path) -> str:
             root, timeout=300,
         )
         branch = next(
-            (line.split()[1].removeprefix("refs/heads/")
-             for line in symref.splitlines()
-             if line.startswith("ref: refs/heads/") and len(line.split()) >= 2),
+            (
+                parts[1][len("refs/heads/"):]
+                for line in symref.splitlines()
+                if len(parts := line.split()) >= 3
+                and parts[0] == "ref:"
+                and parts[2] == "HEAD"
+                and parts[1].startswith("refs/heads/")
+            ),
             "",
         )
         if not branch:

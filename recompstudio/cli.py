@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -11,65 +10,77 @@ from .doctor import print_report
 from .manager import FrameworkError, FrameworkManager
 from .projects import (
     build_project, create_project, publish_project, push_project,
-    update_project_framework,
+    recompile_project, set_project_inputs, update_project_framework,
 )
 from .registry import frameworks, refresh_catalog
 
 
 def _print_frameworks() -> None:
     manager = FrameworkManager()
-    print(f"{'ID':30} {'CATEGORY':18} {'STATUS':14} NAME")
-    print("-" * 100)
+    print(f"{'ID':30} {'CATEGORY':18} {'STATUS':22} NAME")
+    print("-" * 112)
     for item in frameworks():
-        state = manager.status_one(str(item["id"]))
-        print(f"{item['id']:30} {item.get('category', ''):18} {item.get('status', ''):14} {item['name']} — {state.summary}")
+        status = manager.status_one(str(item["id"]))
+        print(f"{item['id']:30} {item.get('category', ''):18} {item.get('status', ''):22} {item['name']} — {status.summary}")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="recompstudio",
-        description="Manage static recompilation frameworks and game projects."
+        description="Manage static recompilation frameworks and native game projects."
     )
     parser.add_argument("--version", action="version", version=f"RecompStudio {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
     commands.add_parser("gui", help="Launch the RecompStudio desktop GUI")
 
-    fw = commands.add_parser("frameworks", help="Manage upstream frameworks and shared components")
+    fw = commands.add_parser("frameworks", help="Manage independent upstream frameworks and shared components")
     fw_commands = fw.add_subparsers(dest="framework_command", required=True)
-    fw_commands.add_parser("list", help="List all frameworks and components")
-    install = fw_commands.add_parser("install", help="Clone one framework")
+    fw_commands.add_parser("list", help="List the framework catalog and local install status")
+    install = fw_commands.add_parser("install", help="Clone one framework and its recursive dependencies")
     install.add_argument("framework_id")
-    update = fw_commands.add_parser("update", help="Fast-forward one framework")
+    update = fw_commands.add_parser("update", help="Fetch and fast-forward one framework")
     update.add_argument("framework_id")
-    fw_commands.add_parser("update-all", help="Update every installed framework")
-    status = fw_commands.add_parser("status", help="Show local versions and pending updates")
-    status.add_argument("--fetch", action="store_true", help="Fetch upstream to check for new commits")
-    fw_commands.add_parser("refresh-catalog", help="Download the latest framework registry")
+    fw_commands.add_parser("update-all", help="Update every installed framework independently")
+    status = fw_commands.add_parser("status", help="Show installed commits and pending updates")
+    status.add_argument("--fetch", action="store_true", help="Fetch upstream before checking for updates")
+    fw_commands.add_parser("refresh-catalog", help="Download the latest RecompStudio framework registry")
 
     doctor = commands.add_parser("doctor", help="Detect the local build toolchain")
     doctor.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
-    project = commands.add_parser("project", help="Create, build, and publish game projects")
+    project = commands.add_parser("project", help="Create, recompile, build and publish game projects")
     project_commands = project.add_subparsers(dest="project_command", required=True)
-    new = project_commands.add_parser("new", help="Create a Git-ready project with a pinned framework")
+    new = project_commands.add_parser("new", help="Create a framework-aware Git-ready game project")
     new.add_argument("--name", required=True)
     new.add_argument("--framework", required=True)
     new.add_argument("--workspace", type=Path, default=Path.home() / "RecompProjects")
-    new.add_argument("--input", type=Path, help="Path to a user-supplied ROM/disc image; not copied into the project")
-    new.add_argument("--bios", type=Path, help="Path to a user-supplied BIOS image; not copied into the project")
+    new.add_argument("--input", type=Path, help="Path to your ROM/disc image; it is never copied into the repository")
+    new.add_argument("--bios", type=Path, help="Optional user-supplied BIOS/firmware path; never copied")
+    new.add_argument("--players", type=int, default=1, choices=range(1, 9))
+
     for action, help_text in (
-        ("build", "Run the project's build script or CMake build"),
-        ("update-framework", "Advance the project's pinned framework submodule"),
+        ("recompile", "Run the selected framework's real code-generation pipeline"),
+        ("build", "Build the generated project/host where an adapter is available"),
+        ("update-framework", "Advance the project-pinned framework submodule"),
     ):
         sub = project_commands.add_parser(action, help=help_text)
         sub.add_argument("path", type=Path)
-    push = project_commands.add_parser("push", help="Commit local changes and push to origin")
+        if action == "recompile":
+            sub.add_argument("--verbose", action="store_true", help="Show detailed generator output")
+
+    inputs = project_commands.add_parser("set-input", help="Set local-only ROM and BIOS paths for an existing project")
+    inputs.add_argument("path", type=Path)
+    inputs.add_argument("--input", type=Path, help="ROM, cartridge, or disc image")
+    inputs.add_argument("--bios", type=Path, help="BIOS or firmware image")
+
+    push = project_commands.add_parser("push", help="Commit changes and push to the configured GitHub origin")
     push.add_argument("path", type=Path)
     push.add_argument("--message", required=True)
+
     publish = project_commands.add_parser("publish", help="Create a GitHub repository with gh and push it")
     publish.add_argument("path", type=Path)
-    publish.add_argument("--repo", required=True, help="GitHub repository name, such as nvd123-YT/MyGame")
+    publish.add_argument("--repo", required=True, help="GitHub repository name, e.g. nvd123-YT/MyGame")
     publish.add_argument("--visibility", choices=("private", "public"), default="private")
 
     return parser
@@ -97,32 +108,42 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Updated {status.name}: {status.commit} ({status.branch})")
             elif args.framework_command == "update-all":
                 updated, failures = manager.update_all()
-                for status in updated:
-                    print(f"UPDATED  {status.name} — {status.commit}")
+                for item in updated:
+                    print(f"UPDATED  {item.name} — {item.commit}")
                 for framework_id, reason in failures:
                     print(f"SKIPPED  {framework_id} — {reason}")
                 print(f"Finished: {len(updated)} updated, {len(failures)} skipped/failed.")
                 return 1 if failures else 0
             elif args.framework_command == "status":
-                statuses = manager.statuses(fetch=args.fetch)
-                for item in statuses:
-                    detail = f" ({item.commit})" if item.commit else ""
-                    print(f"{item.framework_id:30} {item.summary}{detail}")
+                for item in manager.statuses(fetch=args.fetch):
+                    commit = f" ({item.commit})" if item.commit else ""
+                    print(f"{item.framework_id:30} {item.summary}{commit}")
             elif args.framework_command == "refresh-catalog":
                 catalog = refresh_catalog()
                 print(f"Catalog refreshed: {len(catalog['frameworks'])} entries, version {catalog.get('catalog_version', 'unknown')}.")
             return 0
+
         if args.command == "project":
             if args.project_command == "new":
-                path = create_project(args.name, args.framework, args.workspace, args.input, args.bios)
+                path = create_project(
+                    args.name, args.framework, args.workspace,
+                    args.input, args.bios, args.players,
+                )
                 print(f"Created project: {path}")
-                print("Next: follow the upstream game-project guide, then add build.sh, build.ps1, or CMakeLists.txt.")
+                print("Project setup uses the selected framework's upstream wizard where one exists.")
+                print("Use 'recompstudio project recompile' to run its native generation pipeline.")
+            elif args.project_command == "recompile":
+                output = recompile_project(args.path, args.verbose)
+                print(output or "Recompilation completed.")
             elif args.project_command == "build":
                 output = build_project(args.path)
                 print(output or "Build completed.")
             elif args.project_command == "update-framework":
                 commit = update_project_framework(args.path)
                 print(f"Framework pin advanced to {commit}. Commit the updated submodule pointer to your game repository.")
+            elif args.project_command == "set-input":
+                set_project_inputs(args.path, args.input, args.bios)
+                print("Local-only ROM/BIOS settings saved. These paths are excluded from Git.")
             elif args.project_command == "push":
                 print(push_project(args.path, args.message))
             elif args.project_command == "publish":

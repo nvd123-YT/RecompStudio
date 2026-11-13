@@ -18,7 +18,7 @@ from .doctor import doctor_report
 from .manager import FrameworkError, FrameworkManager
 from .projects import (
     build_project, create_project, publish_project, push_project,
-    update_project_framework,
+    recompile_project, set_project_inputs, update_project_framework,
 )
 from .registry import frameworks, refresh_catalog
 
@@ -178,9 +178,11 @@ class RecompStudioApp:
         ttk.Button(current, text="Open project…", command=self._choose_project).pack(side="right")
         buttons = ttk.Frame(page)
         buttons.pack(fill="x", pady=12)
-        ttk.Button(buttons, text="Build", command=self._build_project).pack(side="left")
-        ttk.Button(buttons, text="Update project framework", command=self._update_project_framework).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Open in file manager", command=self._open_project).pack(side="left")
+        ttk.Button(buttons, text="Recompile", style="Accent.TButton", command=self._recompile_project).pack(side="left")
+        ttk.Button(buttons, text="Build", command=self._build_project).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Update project framework", command=self._update_project_framework).pack(side="left")
+        ttk.Button(buttons, text="Save local inputs", command=self._save_project_inputs).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Open in file manager", command=self._open_project).pack(side="right")
         publish = ttk.Frame(page, style="Panel.TFrame", padding=12)
         publish.pack(fill="x", pady=(8, 0))
         ttk.Label(publish, text="GitHub repository (owner/name)", background="#182131").grid(row=0, column=0, sticky="w")
@@ -367,10 +369,28 @@ class RecompStudioApp:
             self.project_var.set(path)
             self._log(f"Selected project: {path}")
 
+    def _recompile_project(self) -> None:
+        if not self._require_project():
+            return
+        self._task("Running framework recompiler…", lambda: recompile_project(self.project_path))
+
     def _build_project(self) -> None:
         if not self._require_project():
             return
         self._task("Building game project…", lambda: build_project(self.project_path))
+
+    def _save_project_inputs(self) -> None:
+        if not self._require_project():
+            return
+        game_input = Path(self.input_var.get()).expanduser() if self.input_var.get().strip() else None
+        bios_input = Path(self.bios_var.get()).expanduser() if self.bios_var.get().strip() else None
+        if game_input is None and bios_input is None:
+            messagebox.showinfo("No paths selected", "Choose a game image and/or BIOS path in the fields above first.")
+            return
+        self._task(
+            "Saving host-local input paths…",
+            lambda: (set_project_inputs(self.project_path, game_input, bios_input), "Local input paths saved; they are excluded from Git.")[1],
+        )
 
     def _update_project_framework(self) -> None:
         if not self._require_project():

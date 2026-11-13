@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,8 +15,8 @@ from .projects import (
     recompile_project, set_project_inputs, update_project_framework,
 )
 from .registry import frameworks, refresh_catalog
-from .toolchains import install_latest, status as toolchain_status
-from .managed_tools import install_latest as install_managed_tool, status as managed_tool_status
+from .toolchains import environment as toolchain_environment, install_latest, status as toolchain_status
+from .managed_tools import environment as managed_environment, install_latest as install_managed_tool, status as managed_tool_status
 
 
 def _print_frameworks() -> None:
@@ -57,6 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     tools = commands.add_parser("tools", help="Install optional GitHub and reverse-engineering tools")
     tools_commands = tools.add_subparsers(dest="tools_command", required=True)
     tools_commands.add_parser("status", help="Show managed-tool availability")
+    tools_commands.add_parser("auth", help="Sign in to GitHub interactively with GitHub CLI")
     tool_install = tools_commands.add_parser("install", help="Install or update a managed tool")
     tool_install.add_argument("tool", choices=("git", "github-cli", "java21", "ghidra", "reverse-engineering"))
 
@@ -108,6 +111,15 @@ def main(argv: list[str] | None = None) -> int:
             from .startup import main as startup_main
             return startup_main([])
         if args.command == "tools":
+            if args.tools_command == "auth":
+                child_env = managed_environment(toolchain_environment())
+                if not shutil.which("gh", path=child_env.get("PATH")):
+                    raise FrameworkError("GitHub CLI is missing. Run 'recompstudio tools install github-cli' first.")
+                try:
+                    result = subprocess.run(["gh", "auth", "login"], env=child_env, check=False)
+                except OSError as exc:
+                    raise FrameworkError(f"Could not start GitHub CLI sign-in: {exc}") from exc
+                return int(result.returncode)
             if args.tools_command == "status":
                 for tool_id, info in managed_tool_status().items():
                     state = "FOUND" if info.get("installed") else "MISSING"

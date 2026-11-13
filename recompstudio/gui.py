@@ -491,7 +491,10 @@ class RecompStudioApp:
                 self.events.put(("progress", message, None))
             git_path = install_managed_tool("git", status=status)
             gh_path = install_managed_tool("github-cli", status=status)
-            return f"Git: {git_path}\nGitHub CLI: {gh_path}"
+            return (
+                f"Git: {git_path}\nGitHub CLI: {gh_path}\n"
+                "Sign in from a terminal with: recompstudio tools auth"
+            )
 
         self._task("Preparing Git and GitHub CLI…", install,
                    lambda result: self._check_tools() if result else None)

@@ -161,8 +161,8 @@ jobs:
           ARCH=x86_64 APPIMAGETOOL_RUNTIME_FILE=./runtime-x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool.AppImage AppDir "release/RecompStudio-${{ matrix.target }}.AppImage"
           sudo apt-get update
           sudo apt-get install -y xvfb
-          xvfb-run -a "release/RecompStudio-${{ matrix.target }}.AppImage" --startup-smoke-test
-          "release/RecompStudio-${{ matrix.target }}.AppImage" --cli --version
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "release/RecompStudio-${{ matrix.target }}.AppImage" --startup-smoke-test
+          APPIMAGE_EXTRACT_AND_RUN=1 "release/RecompStudio-${{ matrix.target }}.AppImage" --cli --version
           cp recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
 
       - uses: actions/upload-artifact@v4

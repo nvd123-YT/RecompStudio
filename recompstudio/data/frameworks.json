@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026.11.13.4",
+  "catalog_version": "2026.11.13.5",
   "catalog_source": "RecompStudio upstream registry",
   "upstream_note": "Framework repositories remain independent upstream projects. RecompStudio stores clean Git checkouts and never vendors or merges their histories. The registry also distinguishes early research, development forks, and title-specific integrations from general-purpose frameworks.",
   "frameworks": [
@@ -189,7 +189,9 @@
       "description": "N64 static recompiler used by mstan's Pokémon Stadium recompilation work.",
       "project_docs": "https://github.com/mstan/N64Recomp",
       "redistributable": true,
-      "redistribution_license": "MIT"
+      "redistribution_license": "MIT",
+      "bundle": false,
+      "bundle_exclusion_reason": "Embedded checkout deferred: the upstream recursive submodule ares-bridge/third_party/ares references an unavailable commit; use the separate official N64Recomp checkout or wait for upstream repair."
     },
     {
       "id": "dolrecomp-upstream",

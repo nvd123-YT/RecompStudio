@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import urllib.request
@@ -28,11 +29,15 @@ def run(command: list[str], cwd: Path | None = None, timeout: int = 1800) -> str
 
 
 def request(url: str, accept: str = "application/vnd.github+json"):
-    req = urllib.request.Request(url, headers={
+    headers = {
         "User-Agent": "RecompStudio-BundleBuilder/0.1",
         "Accept": accept,
         "X-GitHub-Api-Version": "2022-11-28",
-    })
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
     return urllib.request.urlopen(req, timeout=60)
 
 

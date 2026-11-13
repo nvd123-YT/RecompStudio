@@ -48,6 +48,8 @@ jobs:
           python -m pip install .
 
       - name: Build embedded frameworks and platform toolchain
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python packaging/build_bundle.py --platform ${{ matrix.toolchain }}
 
       - name: Compile modules and run unit tests

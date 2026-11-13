@@ -107,9 +107,9 @@ class FrameworkManager:
 
     def install(self, framework_id: str) -> Path:
         item = get_framework(framework_id)
-        destination = self.path_for(framework_id)
+        destination = self.writable_path_for(framework_id)
         if destination.exists():
-            if (destination / ".git").exists():
+            if (destination / ".git").exists() or (destination / ".git").is_file():
                 raise FrameworkError(
                     f"{item['name']} is already installed at {destination}. "
                     "Use update instead."

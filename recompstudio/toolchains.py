@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from .bundles import bundled_toolchain
+
 RELEASE_API = "https://api.github.com/repos/RetroPortingToolKit/RetroPorting-Toolchains/releases/latest"
 PACK_ID = "cmake-clang-v1"
 
@@ -201,84 +203,122 @@ def _download(url: str, destination: Path, progress: Callable[[int, int], None] 
                     progress(done, total)
 
 
+def _install_archive(
+    archive_path: Path,
+    version: str,
+    expected_digest: str = "",
+    status_callback: Callable[[str], None] | None = None,
+) -> Path:
+    cache = pack_cache_root()
+    cache.mkdir(parents=True, exist_ok=True)
+    target = cache / version
+    if _read_pack_manifest(target):
+        (cache / "latest").write_text(version, encoding="utf-8")
+        return target
+
+    if expected_digest:
+        hasher = hashlib.sha256()
+        with archive_path.open("rb") as downloaded:
+            for block in iter(lambda: downloaded.read(1024 * 1024), b""):
+                hasher.update(block)
+        actual = hasher.hexdigest()
+        if actual.lower() != expected_digest.lower():
+            raise ToolchainError(
+                f"Toolchain archive SHA-256 mismatch: expected {expected_digest}, got {actual}."
+            )
+
+    extract_dir = archive_path.parent / (archive_path.stem + "-unpacked")
+    if extract_dir.exists():
+        shutil.rmtree(extract_dir)
+    extract_dir.mkdir(parents=True)
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            _safe_extract(archive, extract_dir)
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise ToolchainError(f"Downloaded toolchain archive is invalid: {exc}") from exc
+
+    source = extract_dir
+    if not (source / "retcomm-toolchain.json").is_file():
+        nested = list(extract_dir.rglob("retcomm-toolchain.json"))
+        if len(nested) != 1:
+            raise ToolchainError("Toolchain ZIP did not contain one retcomm-toolchain.json manifest.")
+        source = nested[0].parent
+    extracted_manifest = _read_pack_manifest(source)
+    if not extracted_manifest:
+        raise ToolchainError("Toolchain pack manifest is invalid or has the wrong pack id.")
+    pack_version = str(extracted_manifest.get("version", version))
+    if pack_version != version:
+        raise ToolchainError(
+            f"Toolchain pack manifest version {pack_version} does not match archive version {version}."
+        )
+    expected_os, manifest_os = expected_platform()
+    actual_os = str(extracted_manifest.get("os", ""))
+    if actual_os and actual_os not in {manifest_os, expected_os}:
+        raise ToolchainError(
+            f"Downloaded toolchain is for {actual_os}, but this system requires {expected_os}."
+        )
+
+    staging = cache / (version + ".installing")
+    if staging.exists():
+        shutil.rmtree(staging)
+    shutil.copytree(source, staging)
+    if target.exists():
+        backup = cache / (version + ".previous")
+        if backup.exists():
+            shutil.rmtree(backup)
+        target.rename(backup)
+        try:
+            staging.rename(target)
+        except Exception:
+            backup.rename(target)
+            raise
+        shutil.rmtree(backup, ignore_errors=True)
+    else:
+        staging.rename(target)
+    shutil.rmtree(extract_dir, ignore_errors=True)
+    (cache / "latest").write_text(version, encoding="utf-8")
+    if status_callback:
+        status_callback(f"Installed shared RetComM toolchain {version}.")
+    return target
+
+
 def install_latest(progress: Callable[[int, int], None] | None = None,
                    status: Callable[[str], None] | None = None,
                    force: bool = False) -> Path:
-    release = latest_release()
-    cache = pack_cache_root()
-    cache.mkdir(parents=True, exist_ok=True)
-    target = cache / release.version
-    manifest = _read_pack_manifest(target)
-    if manifest and not force:
-        (cache / "latest").write_text(release.version, encoding="utf-8")
-        return target
+    """Install from the embedded pack offline first, then fetch newer packs."""
+    current = active_pack()
+    bundled = bundled_toolchain()
+    if current is None and bundled is not None:
+        archive, info = bundled
+        if status:
+            status(f"Installing bundled RetComM toolchain {info.get('version', 'unknown')}…")
+        current = _install_archive(
+            archive, str(info.get("version", "")), str(info.get("sha256", "")),
+            status_callback=status,
+        )
+
+    try:
+        release = latest_release()
+    except ToolchainError:
+        if current is not None:
+            return current
+        raise
+
+    if current is not None and not force:
+        manifest = _read_pack_manifest(current) or {}
+        installed_version = str(manifest.get("version", "0"))
+        if _version_tuple(installed_version) >= _version_tuple(release.version):
+            return current
+
     if status:
         status(f"Downloading {release.asset_name} ({release.size // (1024 * 1024)} MB)…")
     with tempfile.TemporaryDirectory(prefix="recompstudio-toolchain-") as temp_name:
-        temp = Path(temp_name)
-        archive_path = temp / release.asset_name
+        archive_path = Path(temp_name) / release.asset_name
         _download(release.download_url, archive_path, progress)
-        if release.digest.startswith("sha256:"):
-            expected_digest = release.digest.split(":", 1)[1].lower()
-            hasher = hashlib.sha256()
-            with archive_path.open("rb") as downloaded:
-                for block in iter(lambda: downloaded.read(1024 * 1024), b""):
-                    hasher.update(block)
-            actual_digest = hasher.hexdigest()
-            if actual_digest != expected_digest:
-                raise ToolchainError(
-                    f"Toolchain archive SHA-256 mismatch: expected {expected_digest}, got {actual_digest}."
-                )
-        extract_dir = temp / "unpacked"
-        extract_dir.mkdir()
-        try:
-            with zipfile.ZipFile(archive_path) as archive:
-                _safe_extract(archive, extract_dir)
-        except (zipfile.BadZipFile, OSError) as exc:
-            raise ToolchainError(f"Downloaded toolchain archive is invalid: {exc}") from exc
-
-        source = extract_dir
-        if not (source / "retcomm-toolchain.json").is_file():
-            nested = list(extract_dir.rglob("retcomm-toolchain.json"))
-            if len(nested) != 1:
-                raise ToolchainError("Toolchain ZIP did not contain one retcomm-toolchain.json manifest.")
-            source = nested[0].parent
-
-        extracted_manifest = _read_pack_manifest(source)
-        if not extracted_manifest:
-            raise ToolchainError("Toolchain pack manifest is invalid or has the wrong pack id.")
-        expected_os, manifest_os = expected_platform()
-        actual_os = str(extracted_manifest.get("os", ""))
-        if actual_os and actual_os not in {manifest_os, expected_os}:
-            raise ToolchainError(
-                f"Downloaded toolchain is for {actual_os}, but this system requires {expected_os}."
-            )
-
-        # Preserve old versions side by side so projects pinned to an earlier
-        # toolchain floor can keep building. A failed replacement never deletes
-        # the currently active pack.
-        staging = cache / (release.version + ".installing")
-        if staging.exists():
-            shutil.rmtree(staging)
-        shutil.copytree(source, staging)
-        if target.exists():
-            backup = cache / (release.version + ".previous")
-            if backup.exists():
-                shutil.rmtree(backup)
-            target.rename(backup)
-            try:
-                staging.rename(target)
-            except Exception:
-                backup.rename(target)
-                raise
-            shutil.rmtree(backup, ignore_errors=True)
-        else:
-            staging.rename(target)
-
-    (cache / "latest").write_text(release.version, encoding="utf-8")
-    if status:
-        status(f"Installed shared RetComM toolchain {release.version}.")
-    return target
+        digest = release.digest.split(":", 1)[1] if release.digest.startswith("sha256:") else ""
+        return _install_archive(
+            archive_path, release.version, digest, status_callback=status
+        )
 
 
 def environment() -> dict[str, str]:

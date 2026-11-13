@@ -34,4 +34,4 @@ RecompStudio = "recompstudio.gui:launch"
 include = ["recompstudio*"]
 
 [tool.setuptools.package-data]
-recompstudio = ["data/*.json"]
+recompstudio = ["data/*.json", "bundled/**/*"]

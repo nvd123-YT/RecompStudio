@@ -10,7 +10,7 @@ The desktop GUI is the primary workspace; every core operation is also available
 
 The framework catalog is data-driven in `recompstudio/data/frameworks.json`. The GUI reads the same registry as the CLI, and catalog refreshes do not require an application update.
 
-**Packaged builds embed 19 licensed framework/component Git checkouts and a platform-specific RetComM compiler pack.** The source checkouts retain their Git metadata, recursive submodules, licences, and notices. On first launch, RecompStudio installs the bundled compiler pack locally. Frameworks are ready to use without a separate clone step; their writable copies are created only when the user chooses to update them.
+**Packaged builds embed 18 licensed framework/component Git checkouts and a platform-specific RetComM compiler pack.** The source checkouts retain their Git metadata, recursive submodules, licences, and notices. On first launch, RecompStudio installs the bundled compiler pack locally. Frameworks are ready to use without a separate clone step; their writable copies are created only when the user chooses to update them.
 
 ### mstan and RetroPortingToolKit framework families
 

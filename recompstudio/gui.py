@@ -21,7 +21,8 @@ from .projects import (
     recompile_project, set_project_inputs, update_project_framework,
 )
 from .registry import frameworks, refresh_catalog
-from .toolchains import install_latest, status as toolchain_status
+from .toolchains import active_pack, install_latest, status as toolchain_status
+from .bundles import bundled_toolchain
 
 
 class RecompStudioApp:
@@ -38,6 +39,8 @@ class RecompStudioApp:
         self._build()
         self.refresh_frameworks()
         self.root.after(120, self._poll_events)
+        if bundled_toolchain() is not None:
+            self.root.after(350, self._prepare_bundled_toolchain)
 
     def _style(self) -> None:
         style = ttk.Style(self.root)
@@ -428,6 +431,25 @@ class RecompStudioApp:
             return False
         return True
 
+
+    def _prepare_bundled_toolchain(self) -> None:
+        try:
+            current = active_pack()
+        except Exception:
+            current = None
+        if current is not None:
+            return
+
+        def install():
+            def status(message):
+                self.events.put(("progress", message, None))
+            return str(install_latest(status=status))
+
+        self._task(
+            "Preparing the bundled compiler toolchain…",
+            install,
+            lambda result: self._check_tools() if result else None,
+        )
 
     def _install_toolchain(self) -> None:
         def install():

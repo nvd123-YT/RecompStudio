@@ -34,6 +34,10 @@ class ProjectFrameworkUpdateTests(unittest.TestCase):
             git(seed, "commit", "-m", "first framework revision")
             git(seed, "remote", "add", "origin", str(remote))
             git(seed, "push", "-u", "origin", "main")
+            subprocess.run(
+                ["git", "--git-dir", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
+                check=True, capture_output=True,
+            )
             first = git(seed, "rev-parse", "HEAD")
 
             project.mkdir()
@@ -85,6 +89,10 @@ class ProjectFrameworkUpdateTests(unittest.TestCase):
             git(seed, "commit", "-m", "initial")
             git(seed, "remote", "add", "origin", str(remote))
             git(seed, "push", "-u", "origin", "main")
+            subprocess.run(
+                ["git", "--git-dir", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
+                check=True, capture_output=True,
+            )
             project.mkdir()
             submodule.parent.mkdir(parents=True)
             subprocess.run(["git", "clone", str(remote), str(submodule)], check=True, capture_output=True)

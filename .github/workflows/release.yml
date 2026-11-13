@@ -107,9 +107,48 @@ jobs:
           Categories=Development;Utility;
           Terminal=false
           EOF
-          curl -L --fail --retry 3 -o appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
-          chmod +x appimagetool.AppImage
-          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool.AppImage AppDir "release/RecompStudio-${{ matrix.target }}.AppImage"
+          python - <<'PY'
+          import hashlib
+          import json
+          import urllib.request
+
+          assets = [
+              ("AppImage/appimagetool", "appimagetool-x86_64.AppImage", "appimagetool.AppImage"),
+              ("AppImage/type2-runtime", "runtime-x86_64", "runtime-x86_64"),
+          ]
+          for repository, asset_name, destination in assets:
+              api = f"https://api.github.com/repos/{repository}/releases/tags/continuous"
+              request = urllib.request.Request(api, headers={
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "RecompStudio-Packager",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              })
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  release = json.loads(response.read().decode("utf-8"))
+              match = next((item for item in release.get("assets", [])
+                            if item.get("name") == asset_name), None)
+              if not match:
+                  raise SystemExit(f"Missing release asset {asset_name} from {repository}")
+              download = urllib.request.Request(
+                  match["browser_download_url"],
+                  headers={"User-Agent": "RecompStudio-Packager",
+                           "Accept": "application/octet-stream"},
+              )
+              digest = hashlib.sha256()
+              with urllib.request.urlopen(download, timeout=180) as response, open(destination, "wb") as output:
+                  while True:
+                      block = response.read(1024 * 1024)
+                      if not block:
+                          break
+                      output.write(block)
+                      digest.update(block)
+              expected = str(match.get("digest", ""))
+              if expected.startswith("sha256:") and digest.hexdigest().lower() != expected.split(":", 1)[1].lower():
+                  raise SystemExit(f"SHA-256 mismatch for {asset_name}")
+              print(f"Verified {repository}/{asset_name}")
+          PY
+          chmod +x appimagetool.AppImage runtime-x86_64
+          ARCH=x86_64 APPIMAGETOOL_RUNTIME_FILE=./runtime-x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool.AppImage AppDir "release/RecompStudio-${{ matrix.target }}.AppImage"
           cp recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
 
       - uses: actions/upload-artifact@v4

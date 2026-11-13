@@ -28,10 +28,10 @@ class BundledResourceTests(unittest.TestCase):
                 "frameworks": [{"id": "nesrecomp"}],
             }), encoding="utf-8")
             with patch.dict(os.environ, {"RECOMPSTUDIO_BUNDLED_ROOT": str(root)}):
-                self.assertEqual(bundle_root(), root)
+                self.assertEqual(bundle_root(), root.resolve())
                 self.assertEqual(bundle_manifest()["frameworks"][0]["id"], "nesrecomp")
-                self.assertEqual(bundled_framework_path("nesrecomp"), framework)
-                self.assertEqual(bundled_toolchain()[0], archive)
+                self.assertEqual(bundled_framework_path("nesrecomp"), framework.resolve())
+                self.assertEqual(bundled_toolchain()[0], archive.resolve())
                 self.assertIsNone(bundled_framework_path("psxrecomp"))
 
     def test_missing_bundle_is_supported_for_source_development(self):

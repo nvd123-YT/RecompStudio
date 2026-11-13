@@ -227,55 +227,54 @@ def _install_archive(
                 f"Toolchain archive SHA-256 mismatch: expected {expected_digest}, got {actual}."
             )
 
-    extract_dir = archive_path.parent / (archive_path.stem + "-unpacked")
-    if extract_dir.exists():
-        shutil.rmtree(extract_dir)
-    extract_dir.mkdir(parents=True)
-    try:
-        with zipfile.ZipFile(archive_path) as archive:
-            _safe_extract(archive, extract_dir)
-    except (zipfile.BadZipFile, OSError) as exc:
-        raise ToolchainError(f"Downloaded toolchain archive is invalid: {exc}") from exc
-
-    source = extract_dir
-    if not (source / "retcomm-toolchain.json").is_file():
-        nested = list(extract_dir.rglob("retcomm-toolchain.json"))
-        if len(nested) != 1:
-            raise ToolchainError("Toolchain ZIP did not contain one retcomm-toolchain.json manifest.")
-        source = nested[0].parent
-    extracted_manifest = _read_pack_manifest(source)
-    if not extracted_manifest:
-        raise ToolchainError("Toolchain pack manifest is invalid or has the wrong pack id.")
-    pack_version = str(extracted_manifest.get("version", version))
-    if pack_version != version:
-        raise ToolchainError(
-            f"Toolchain pack manifest version {pack_version} does not match archive version {version}."
-        )
-    expected_os, manifest_os = expected_platform()
-    actual_os = str(extracted_manifest.get("os", ""))
-    if actual_os and actual_os not in {manifest_os, expected_os}:
-        raise ToolchainError(
-            f"Downloaded toolchain is for {actual_os}, but this system requires {expected_os}."
-        )
-
-    staging = cache / (version + ".installing")
-    if staging.exists():
-        shutil.rmtree(staging)
-    shutil.copytree(source, staging)
-    if target.exists():
-        backup = cache / (version + ".previous")
-        if backup.exists():
-            shutil.rmtree(backup)
-        target.rename(backup)
+    with tempfile.TemporaryDirectory(prefix="recompstudio-toolchain-extract-") as temp_name:
+        extract_dir = Path(temp_name) / "unpacked"
+        extract_dir.mkdir()
         try:
+            with zipfile.ZipFile(archive_path) as archive:
+                _safe_extract(archive, extract_dir)
+        except (zipfile.BadZipFile, OSError) as exc:
+            raise ToolchainError(f"Downloaded toolchain archive is invalid: {exc}") from exc
+
+        source = extract_dir
+        if not (source / "retcomm-toolchain.json").is_file():
+            nested = list(extract_dir.rglob("retcomm-toolchain.json"))
+            if len(nested) != 1:
+                raise ToolchainError("Toolchain ZIP did not contain one retcomm-toolchain.json manifest.")
+            source = nested[0].parent
+        extracted_manifest = _read_pack_manifest(source)
+        if not extracted_manifest:
+            raise ToolchainError("Toolchain pack manifest is invalid or has the wrong pack id.")
+        pack_version = str(extracted_manifest.get("version", version))
+        if pack_version != version:
+            raise ToolchainError(
+                f"Toolchain pack manifest version {pack_version} does not match archive version {version}."
+            )
+        expected_os, manifest_os = expected_platform()
+        actual_os = str(extracted_manifest.get("os", ""))
+        if actual_os and actual_os not in {manifest_os, expected_os}:
+            raise ToolchainError(
+                f"Downloaded toolchain is for {actual_os}, but this system requires {expected_os}."
+            )
+
+        staging = cache / (version + ".installing")
+        if staging.exists():
+            shutil.rmtree(staging)
+        shutil.copytree(source, staging)
+        if target.exists():
+            backup = cache / (version + ".previous")
+            if backup.exists():
+                shutil.rmtree(backup)
+            target.rename(backup)
+            try:
+                staging.rename(target)
+            except Exception:
+                backup.rename(target)
+                raise
+            shutil.rmtree(backup, ignore_errors=True)
+        else:
             staging.rename(target)
-        except Exception:
-            backup.rename(target)
-            raise
-        shutil.rmtree(backup, ignore_errors=True)
-    else:
-        staging.rename(target)
-    shutil.rmtree(extract_dir, ignore_errors=True)
+
     (cache / "latest").write_text(version, encoding="utf-8")
     if status_callback:
         status_callback(f"Installed shared RetComM toolchain {version}.")

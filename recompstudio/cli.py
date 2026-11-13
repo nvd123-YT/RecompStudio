@@ -105,9 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "gui":
-            from .gui import launch
-            launch()
-            return 0
+            from .startup import main as startup_main
+            return startup_main([])
         if args.command == "tools":
             if args.tools_command == "status":
                 for tool_id, info in managed_tool_status().items():

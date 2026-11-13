@@ -24,11 +24,13 @@ from .registry import frameworks, refresh_catalog
 from .toolchains import active_pack, install_latest, status as toolchain_status
 from .bundles import bundled_toolchain
 from .managed_tools import install_latest as install_managed_tool, status as managed_tool_status
+from .startup import record_exception
 
 
 class RecompStudioApp:
     def __init__(self, root: tk.Tk):
         self.root = root
+        self.root.report_callback_exception = self._report_tk_callback_exception
         self.manager = FrameworkManager()
         self.events: queue.Queue = queue.Queue()
         self.project_path: Path | None = None
@@ -42,6 +44,25 @@ class RecompStudioApp:
         self.root.after(120, self._poll_events)
         if bundled_toolchain() is not None:
             self.root.after(350, self._prepare_bundled_toolchain)
+
+    def _report_tk_callback_exception(self, exc_type, exc_value, exc_traceback) -> None:
+        log_path = record_exception(
+            exc_value, context="GUI event callback", exc_traceback=exc_traceback
+        )
+        try:
+            self._log(f"ERROR: An interface action failed. Details saved to {log_path}")
+        except Exception:
+            pass
+        try:
+            messagebox.showerror(
+                "RecompStudio action failed",
+                "An interface action failed. RecompStudio will remain open where possible. "
+                f"Diagnostic details were saved to:\n\n{log_path}",
+            )
+        except tk.TclError:
+            # Tk itself may be failing; the launcher will also capture an
+            # exception that escapes the main event loop.
+            pass
 
     def _style(self) -> None:
         style = ttk.Style(self.root)

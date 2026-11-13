@@ -127,6 +127,13 @@ def _safe_extract(archive_path: Path, destination: Path) -> None:
                 if target != root and root not in target.parents:
                     raise ManagedToolError(f"Unsafe ZIP path: {item.filename}")
             archive.extractall(destination)
+            # zipfile does not consistently restore Unix executable bits.
+            # Restore the upstream mode so CLI and Ghidra shell entrypoints run.
+            for item in archive.infolist():
+                mode = (item.external_attr >> 16) & 0o777
+                target = destination / item.filename
+                if mode and target.is_file():
+                    target.chmod(mode)
         return
     try:
         archive = tarfile.open(archive_path, "r:*")

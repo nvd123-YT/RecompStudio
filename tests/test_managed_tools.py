@@ -26,6 +26,22 @@ class ManagedToolTests(unittest.TestCase):
         selected = _select_asset("java21", assets, os_name="darwin", machine="x86_64")
         self.assertIn("x64_mac", selected["name"])
 
+    def test_zip_extraction_preserves_executable_permissions(self):
+        import stat
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive_path = root / "tool.zip"
+            info = zipfile.ZipInfo("bin/gh")
+            info.create_system = 3
+            info.external_attr = (0o100755 << 16)
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(info, "#!/bin/sh\\necho gh\\n")
+            destination = root / "extract"
+            destination.mkdir()
+            _safe_extract(archive_path, destination)
+            mode = stat.S_IMODE((destination / "bin" / "gh").stat().st_mode)
+            self.assertTrue(mode & 0o111)
+
     def test_rejects_zip_path_traversal(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

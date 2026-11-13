@@ -17,6 +17,7 @@ from typing import Sequence
 
 from .manager import FrameworkError, FrameworkManager
 from .registry import get_framework
+from .toolchains import environment as toolchain_environment
 
 WORKFLOW = """name: RecompStudio build
 on:
@@ -115,8 +116,16 @@ firmware/
 def _run(command: Sequence[str], cwd: Path, timeout: int = 1800,
          env: dict | None = None) -> str:
     try:
+        child_env = toolchain_environment()
+        if env:
+            supplied_path = env.get("PATH", "")
+            child_env.update(env)
+            pack = toolchain_environment().get("RETCOMM_TOOLCHAIN_DIR")
+            if pack:
+                pack_bins = [str(Path(pack) / "bin"), str(Path(pack) / "python" / "bin"), str(Path(pack) / "python")]
+                child_env["PATH"] = os.pathsep.join([p for p in pack_bins if Path(p).is_dir()] + ([supplied_path] if supplied_path else []))
         proc = subprocess.run(
-            list(map(str, command)), cwd=cwd, env=env,
+            list(map(str, command)), cwd=cwd, env=child_env,
             capture_output=True, text=True, encoding="utf-8",
             errors="replace", check=False, timeout=timeout
         )

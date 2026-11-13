@@ -15,8 +15,8 @@ from .projects import (
     recompile_project, set_project_inputs, update_project_framework,
 )
 from .registry import frameworks, refresh_catalog
-from .toolchains import environment as toolchain_environment, install_latest, status as toolchain_status
-from .managed_tools import environment as managed_environment, install_latest as install_managed_tool, status as managed_tool_status
+from .toolchains import ToolchainError, environment as toolchain_environment, install_latest, status as toolchain_status
+from .managed_tools import ManagedToolError, environment as managed_environment, install_latest as install_managed_tool, status as managed_tool_status
 
 
 def _print_frameworks() -> None:
@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
             elif args.project_command == "publish":
                 print(publish_project(args.path, args.repo, args.visibility))
             return 0
-    except (FrameworkError, KeyError, ValueError, OSError) as exc:
+    except (FrameworkError, ToolchainError, ManagedToolError, KeyError, ValueError, OSError) as exc:
         print(f"RecompStudio: {exc}", file=sys.stderr)
         return 1
     parser.error("Unknown command.")

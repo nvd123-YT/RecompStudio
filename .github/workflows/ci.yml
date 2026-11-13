@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Compile all application modules
-        run: python -m compileall -q recompstudio
+        run: python -m compileall -q recompstudio packaging
       - name: Unit tests
         run: python -m unittest discover -s tests -v
       - name: CLI smoke test

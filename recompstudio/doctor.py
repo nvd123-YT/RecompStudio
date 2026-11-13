@@ -8,6 +8,8 @@ import subprocess
 import sys
 from dataclasses import asdict, dataclass
 
+from .toolchains import ToolchainError, active_pack, environment as toolchain_environment
+
 
 @dataclass
 class ToolCheck:
@@ -32,11 +34,17 @@ TOOL_COMMANDS = {
 }
 
 
-def _version(command: list[str]) -> str:
+def _version(command: list[str], env: dict[str, str]) -> str:
     try:
         result = subprocess.run(
-            command, capture_output=True, text=True, timeout=8,
-            encoding="utf-8", errors="replace", check=False
+            command,
+            capture_output=True,
+            text=True,
+            timeout=8,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            env=env,
         )
         lines = (result.stdout or result.stderr).strip().splitlines()
         return lines[0].strip()[:180] if lines else ""
@@ -46,14 +54,18 @@ def _version(command: list[str]) -> str:
 
 def check_tools() -> list[ToolCheck]:
     results: list[ToolCheck] = []
+    managed_env = toolchain_environment()
+    search_path = managed_env.get("PATH")
     for name, command in TOOL_COMMANDS.items():
-        managed_env = toolchain_environment()
-        path = shutil.which(command[0], path=managed_env.get("PATH"))
+        executable = command[0]
+        # sys.executable is already an absolute path; all other tools may be
+        # supplied by the shared RetComM toolchain cache.
+        path = executable if executable == sys.executable else shutil.which(executable, path=search_path)
         results.append(ToolCheck(
             name=name,
             found=bool(path),
             path=path,
-            version=_version(command) if path else "",
+            version=_version(command, managed_env) if path else "",
             required_for={
                 "git": "Framework installation, submodules, and GitHub publishing",
                 "python": "RecompStudio and many framework analyzers",
@@ -73,13 +85,22 @@ def check_tools() -> list[ToolCheck]:
 def doctor_report() -> dict:
     results = check_tools()
     platform_name = platform.system()
-    pack = active_pack()
+    pack = None
+    pack_error = None
+    try:
+        pack = active_pack()
+    except ToolchainError as exc:
+        pack_error = str(exc)
+
     pack_manifest = None
     if pack and (pack / "retcomm-toolchain.json").is_file():
         try:
-            pack_manifest = json.loads((pack / "retcomm-toolchain.json").read_text(encoding="utf-8"))
+            pack_manifest = json.loads(
+                (pack / "retcomm-toolchain.json").read_text(encoding="utf-8")
+            )
         except (OSError, json.JSONDecodeError):
             pack_manifest = None
+
     return {
         "platform": platform_name,
         "python": sys.version.split()[0],
@@ -87,6 +108,7 @@ def doctor_report() -> dict:
             "installed": pack is not None,
             "version": pack_manifest.get("version") if pack_manifest else None,
             "path": str(pack) if pack else None,
+            "error": pack_error,
         },
         "checks": [asdict(item) for item in results],
         "missing": [item.name for item in results if not item.found],
@@ -105,6 +127,8 @@ def print_report(as_json: bool = False) -> int:
         print(json.dumps(report, indent=2))
         return 0
     print(f"RecompStudio environment check — {report['platform']} / Python {report['python']}")
+    pack = report["shared_toolchain"]
+    print(f"Shared RetComM toolchain: {pack['version'] or 'not installed'}")
     print()
     for item in report["checks"]:
         state = "FOUND" if item["found"] else "MISSING"
@@ -112,5 +136,7 @@ def print_report(as_json: bool = False) -> int:
         print(f"[{state:7}] {item['name']}{version}")
     print()
     print(report["guidance"])
+    if pack.get("error"):
+        print("Toolchain cache: " + pack["error"])
     print(report["note"])
     return 0

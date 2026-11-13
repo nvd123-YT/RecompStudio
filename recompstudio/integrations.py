@@ -18,6 +18,7 @@ from typing import Sequence
 from .manager import FrameworkError, FrameworkManager
 from .registry import get_framework
 from .toolchains import environment as toolchain_environment
+from .managed_tools import environment as managed_environment
 
 WORKFLOW = """name: RecompStudio build
 on:
@@ -129,7 +130,7 @@ firmware/
 def _run(command: Sequence[str], cwd: Path, timeout: int = 1800,
          env: dict | None = None) -> str:
     try:
-        child_env = toolchain_environment()
+        child_env = managed_environment(toolchain_environment())
         if env:
             supplied_path = env.get("PATH", "")
             child_env.update(env)

@@ -9,6 +9,7 @@ from typing import Any
 
 from .registry import app_data_dir, get_framework, frameworks
 from .bundles import bundled_framework_path
+from .managed_tools import environment as managed_environment
 
 
 class FrameworkError(RuntimeError):
@@ -89,6 +90,7 @@ class FrameworkManager:
         try:
             result = subprocess.run(
                 command,
+                env=managed_environment(),
                 check=False,
                 capture_output=True,
                 text=True,

@@ -23,6 +23,7 @@ from .projects import (
 from .registry import frameworks, refresh_catalog
 from .toolchains import active_pack, install_latest, status as toolchain_status
 from .bundles import bundled_toolchain
+from .managed_tools import install_latest as install_managed_tool, status as managed_tool_status
 
 
 class RecompStudioApp:
@@ -208,6 +209,8 @@ class RecompStudioApp:
         tool_actions = ttk.Frame(page)
         tool_actions.pack(fill="x", pady=12)
         ttk.Button(tool_actions, text="Install / update shared toolchain", style="Accent.TButton", command=self._install_toolchain).pack(side="left")
+        ttk.Button(tool_actions, text="Install Git + GitHub CLI", command=self._install_git_tools).pack(side="left", padx=8)
+        ttk.Button(tool_actions, text="Install Java 21 + Ghidra", command=self._install_reverse_engineering_tools).pack(side="left", padx=8)
         ttk.Button(tool_actions, text="Run environment check", command=self._check_tools).pack(side="left", padx=8)
         self.tools_text = tk.Text(page, height=17, bg="#182131", fg="#e8edf5", insertbackground="white", relief="flat", wrap="word", padx=12, pady=12)
         self.tools_text.pack(fill="both", expand=True)
@@ -461,15 +464,49 @@ class RecompStudioApp:
 
         self._task("Checking shared toolchain release…", install, lambda result: self._check_tools() if result else None)
 
+    def _install_git_tools(self) -> None:
+        def install():
+            def status(message):
+                self.events.put(("progress", message, None))
+            git_path = install_managed_tool("git", status=status)
+            gh_path = install_managed_tool("github-cli", status=status)
+            return f"Git: {git_path}\nGitHub CLI: {gh_path}"
+
+        self._task("Preparing Git and GitHub CLI…", install,
+                   lambda result: self._check_tools() if result else None)
+
+    def _install_reverse_engineering_tools(self) -> None:
+        def install():
+            def progress(done, total):
+                if total and (done == total or done % (16 * 1024 * 1024) < 1024 * 1024):
+                    message = f"Downloading reverse-engineering tools: {done // (1024 * 1024)} / {total // (1024 * 1024)} MB"
+                    self.events.put(("progress", message, None))
+            def status(message):
+                self.events.put(("progress", message, None))
+            result = install_managed_tool("reverse-engineering", progress=progress, status=status)
+            return "\n".join(f"{name}: {path}" for name, path in result.items())
+
+        self._task("Downloading Java 21 and Ghidra…", install,
+                   lambda result: self._check_tools() if result else None)
+
     def _check_tools(self) -> None:
         report = doctor_report()
         pack = report.get("shared_toolchain", {})
+        managed = report.get("managed_tools", {})
         lines = [
             f"Platform: {report['platform']}",
             f"Python: {report['python']}",
             f"Shared RetComM toolchain: {'installed' if pack.get('installed') else 'not installed'}",
             f"Toolchain version: {pack.get('version') or '—'}",
             f"Toolchain path: {pack.get('path') or '—'}",
+            "",
+            "Managed optional tools:",
+            *[
+                f"  {name}: {'FOUND' if info.get('installed') else 'MISSING'}"
+                + (f" ({'managed ' if info.get('managed') else ''}{info.get('version') or info.get('path')})"
+                   if info.get('version') or info.get('path') else "")
+                for name, info in managed.items()
+            ],
             "",
         ]
         for item in report["checks"]:

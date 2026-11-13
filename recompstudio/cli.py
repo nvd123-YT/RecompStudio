@@ -14,6 +14,7 @@ from .projects import (
 )
 from .registry import frameworks, refresh_catalog
 from .toolchains import install_latest, status as toolchain_status
+from .managed_tools import install_latest as install_managed_tool, status as managed_tool_status
 
 
 def _print_frameworks() -> None:
@@ -52,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     tc_commands.add_parser("status", help="Check the latest pack and local installation")
     tc_commands.add_parser("install", help="Download and install the latest host-compatible pack")
     tc_commands.add_parser("update", help="Update the shared pack while keeping older versions")
+
+    tools = commands.add_parser("tools", help="Install optional GitHub and reverse-engineering tools")
+    tools_commands = tools.add_subparsers(dest="tools_command", required=True)
+    tools_commands.add_parser("status", help="Show managed-tool availability")
+    tool_install = tools_commands.add_parser("install", help="Install or update a managed tool")
+    tool_install.add_argument("tool", choices=("git", "github-cli", "java21", "ghidra", "reverse-engineering"))
 
     doctor = commands.add_parser("doctor", help="Detect the local build toolchain")
     doctor.add_argument("--json", action="store_true", help="Print machine-readable JSON")
@@ -100,6 +107,27 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "gui":
             from .gui import launch
             launch()
+            return 0
+        if args.command == "tools":
+            if args.tools_command == "status":
+                for tool_id, info in managed_tool_status().items():
+                    state = "FOUND" if info.get("installed") else "MISSING"
+                    origin = "managed" if info.get("managed") else "system"
+                    print(f"[{state}] {tool_id}: {info.get('version') or info.get('path') or 'not installed'} ({origin})")
+                return 0
+            installed = install_managed_tool(
+                args.tool,
+                status=lambda message: print(message, flush=True),
+                progress=lambda done, total: print(
+                    f"Downloaded {done // (1024 * 1024)} / {total // (1024 * 1024)} MB",
+                    flush=True,
+                ) if total and done == total else None,
+            )
+            if isinstance(installed, dict):
+                for tool_id, path in installed.items():
+                    print(f"{tool_id}: {path}")
+            else:
+                print(f"{args.tool}: {installed}")
             return 0
         if args.command == "doctor":
             return print_report(args.json)

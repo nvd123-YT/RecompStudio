@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -9,6 +10,7 @@ import sys
 from dataclasses import asdict, dataclass
 
 from .toolchains import ToolchainError, active_pack, environment as toolchain_environment
+from .managed_tools import environment as managed_environment, status as managed_tool_status
 
 
 @dataclass
@@ -30,12 +32,14 @@ TOOL_COMMANDS = {
     "MSVC (cl)": ["cl"],
     "Java": ["java", "-version"],
     "GitHub CLI": ["gh", "--version"],
-    "Ghidra headless": ["analyzeHeadless", "-help"],
+    "Ghidra headless": ["analyzeHeadless.bat", "-help"] if sys.platform == "win32" else ["analyzeHeadless", "-help"],
 }
 
 
 def _version(command: list[str], env: dict[str, str]) -> str:
     try:
+        if command[0].lower().endswith(".bat") and os.name == "nt":
+            command = ["cmd", "/c", *command]
         result = subprocess.run(
             command,
             capture_output=True,
@@ -54,7 +58,7 @@ def _version(command: list[str], env: dict[str, str]) -> str:
 
 def check_tools() -> list[ToolCheck]:
     results: list[ToolCheck] = []
-    managed_env = toolchain_environment()
+    managed_env = managed_environment(toolchain_environment())
     search_path = managed_env.get("PATH")
     for name, command in TOOL_COMMANDS.items():
         executable = command[0]
@@ -103,6 +107,7 @@ def doctor_report() -> dict:
 
     return {
         "platform": platform_name,
+        "managed_tools": managed_tool_status(),
         "python": sys.version.split()[0],
         "shared_toolchain": {
             "installed": pack is not None,

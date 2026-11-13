@@ -70,7 +70,7 @@ recompstudio toolchains update
 
 Packaged builds include the compatible RetComM `cmake-clang-v1` archive and its licence/third-party notices. First launch installs this archive from the local app resources, so initial toolchain setup does not require a separate download. The Toolchain tab and CLI can then check for a newer upstream release and update it while retaining older version folders. The user PATH is never permanently rewritten.
 
-The pack provides CMake, Ninja, Clang/LLVM where published, embeddable CPython, zlib, and SDL3 support. It targets Windows x64, macOS universal (Intel and Apple Silicon), and Linux x86_64. macOS still requires Apple's Xcode Command Line Tools/SDK. XboxLLR currently requires Microsoft's MSVC and Windows SDK; those proprietary platform tools are not redistributed. Git is needed for framework updates and source control, and GitHub CLI is used to create repositories with `project publish`. Ghidra/Java are not yet included in the package; the Toolchain tab reports detected optional tools.
+The pack provides CMake, Ninja, Clang/LLVM where published, embeddable CPython, zlib, and SDL3 support. It targets Windows x64, macOS universal (Intel and Apple Silicon), and Linux x86_64. macOS still requires Apple's Xcode Command Line Tools/SDK. XboxLLR currently requires Microsoft's MSVC and Windows SDK; those proprietary platform tools are not redistributed. GitHub CLI and optional reverse-engineering tools are installed on demand from the Toolchain tab or `recompstudio tools install`. Windows can install a per-user portable MinGit copy; macOS uses the system Git provided by Xcode Command Line Tools, and Linux uses the distribution's Git package. Java 21 (Eclipse Temurin) and Ghidra are downloaded into the user data directory only when requested (the Ghidra archive is large). Managed tools never need administrator privileges and do not rewrite the global PATH. GitHub publishing still requires the user to sign in with `gh auth login`; credentials remain under GitHub CLI's own account storage.
 
 ## Install and launch from source
 
@@ -104,9 +104,12 @@ recompstudio frameworks refresh-catalog
 recompstudio toolchains status
 recompstudio toolchains install
 
-# Toolchain diagnostics
+# Toolchain diagnostics and optional managed tools
 recompstudio doctor
 recompstudio doctor --json
+recompstudio tools status
+recompstudio tools install github-cli
+recompstudio tools install reverse-engineering
 
 # Create a project; the ROM/disc is referenced locally and never copied into Git
 recompstudio project new --name MyGame --framework psxrecomp \

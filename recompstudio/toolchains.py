@@ -287,14 +287,18 @@ def install_latest(progress: Callable[[int, int], None] | None = None,
     """Install from the embedded pack offline first, then fetch newer packs."""
     current = active_pack()
     bundled = bundled_toolchain()
-    if current is None and bundled is not None:
+    if bundled is not None:
         archive, info = bundled
-        if status:
-            status(f"Installing bundled RetComM toolchain {info.get('version', 'unknown')}…")
-        current = _install_archive(
-            archive, str(info.get("version", "")), str(info.get("sha256", "")),
-            status_callback=status,
-        )
+        bundled_version = str(info.get("version", "0"))
+        installed_manifest = _read_pack_manifest(current) if current else None
+        installed_version = str(installed_manifest.get("version", "0")) if installed_manifest else "0"
+        if current is None or _version_tuple(bundled_version) > _version_tuple(installed_version):
+            if status:
+                status(f"Installing bundled RetComM toolchain {bundled_version}…")
+            current = _install_archive(
+                archive, bundled_version, str(info.get("sha256", "")),
+                status_callback=status,
+            )
 
     try:
         release = latest_release()
@@ -331,6 +335,35 @@ def environment() -> dict[str, str]:
     old_path = result.get("PATH", "")
     result["PATH"] = os.pathsep.join(additions + ([old_path] if old_path else []))
     result["RETCOMM_TOOLCHAIN_DIR"] = str(pack)
+
+    deps = pack / "deps"
+    cmake_prefix = [str(deps)] if deps.is_dir() else []
+    if deps.is_dir():
+        zlib_root = deps
+        sdl3_cmake = deps / "lib" / "cmake" / "SDL3"
+        result.setdefault("ZLIB_ROOT", str(zlib_root))
+        if sdl3_cmake.is_dir():
+            result.setdefault("SDL3_DIR", str(sdl3_cmake))
+        existing_prefix = result.get("CMAKE_PREFIX_PATH", "")
+        result["CMAKE_PREFIX_PATH"] = os.pathsep.join(
+            cmake_prefix + ([existing_prefix] if existing_prefix else [])
+        )
+
+    # Linux and Windows packs include Clang; the macOS pack deliberately uses
+    # Apple's compiler and SDK from Xcode Command Line Tools.
+    if sys.platform != "darwin" and not result.get("CC") and not result.get("CXX"):
+        bin_dir = pack / "bin"
+        pairs = [
+            (bin_dir / "clang", bin_dir / "clang++"),
+            (bin_dir / "clang.exe", bin_dir / "clang++.exe"),
+            (bin_dir / "x86_64-w64-mingw32-clang.exe",
+             bin_dir / "x86_64-w64-mingw32-clang++.exe"),
+        ]
+        for c_compiler, cxx_compiler in pairs:
+            if c_compiler.is_file() and cxx_compiler.is_file():
+                result["CC"] = str(c_compiler)
+                result["CXX"] = str(cxx_compiler)
+                break
     return result
 
 

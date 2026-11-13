@@ -53,7 +53,7 @@ class ManagedToolTests(unittest.TestCase):
                 ("ghidra", "12", "ghidra/support/analyzeHeadless", "ghidra/support", "ghidra"),
             ):
                 install = root / tool_id / version
-                install.mkdir(parents=True)
+                install.mkdir(parents=True, exist_ok=True)
                 import json
                 (install / "managed-tool.json").write_text(
                     json.dumps({

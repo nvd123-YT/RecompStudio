@@ -11,20 +11,23 @@ permissions:
 
 jobs:
   package:
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2022
             target: windows-x64
+            toolchain: windows-x64
           - os: macos-15-intel
             target: macos-x64
-            arch: x64
+            toolchain: macos-universal
           - os: macos-15
             target: macos-arm64
-            arch: arm64
+            toolchain: macos-universal
           - os: ubuntu-22.04
             target: linux-x86_64
+            toolchain: linux-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -33,45 +36,59 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install packaging tools
+      - name: Install packaging dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel pyinstaller
           python -m pip install .
+
+      - name: Build embedded frameworks and platform toolchain
+        run: python packaging/build_bundle.py --platform ${{ matrix.toolchain }}
+
+      - name: Compile modules and run unit tests
+        run: |
+          python -m compileall -q recompstudio packaging
+          python -m unittest discover -s tests -v
 
       - name: Package Windows GUI and CLI
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name RecompStudio --collect-data recompstudio scripts/launch_gui.py
-          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli --collect-data recompstudio scripts/launch_cli.py
+          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/bundled;recompstudio/bundled" scripts/launch_gui.py
+          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
           New-Item -ItemType Directory -Force release | Out-Null
-          Copy-Item dist/RecompStudio.exe release/RecompStudio.exe
+          Copy-Item dist/RecompStudio release/RecompStudio -Recurse
           Copy-Item dist/recompstudio-cli.exe release/recompstudio-cli.exe
-          Compress-Archive -Path release/RecompStudio.exe,release/recompstudio-cli.exe -DestinationPath release/RecompStudio-windows-x64.zip
+          Copy-Item recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
+          tar.exe -a -cf release/RecompStudio-${{ matrix.target }}.zip -C release RecompStudio recompstudio-cli.exe UPSTREAM_LICENSES.md
 
       - name: Package macOS app and CLI
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --windowed --name RecompStudio --collect-data recompstudio scripts/launch_gui.py
-          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli --collect-data recompstudio scripts/launch_cli.py
+          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
+          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
           mkdir -p release/dmg-root
           cp -R dist/RecompStudio.app release/dmg-root/RecompStudio.app
           cp dist/recompstudio-cli release/dmg-root/recompstudio-cli
+          cp recompstudio/bundled/UPSTREAM_LICENSES.md release/dmg-root/UPSTREAM_LICENSES.md
           hdiutil create -volname "RecompStudio" -srcfolder release/dmg-root -ov -format UDZO "release/RecompStudio-${{ matrix.target }}.dmg"
+          cp recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
 
       - name: Package Linux AppImage
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --collect-data recompstudio scripts/launch_gui.py
-          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli --collect-data recompstudio scripts/launch_cli.py
+          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
+          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
           mkdir -p AppDir/usr/bin release
-          cp -R dist/RecompStudio/. AppDir/usr/bin/
+          cp -R dist/RecompStudio AppDir/usr/bin/RecompStudio
           cp dist/recompstudio-cli AppDir/usr/bin/recompstudio-cli
+          cp recompstudio/bundled/UPSTREAM_LICENSES.md AppDir/UPSTREAM_LICENSES.md
           cat > AppDir/AppRun <<'EOF'
           #!/bin/sh
-          exec "$APPDIR/usr/bin/RecompStudio" "$@"
+          HERE="$(dirname "$(readlink -f "$0")")"
+          export RECOMPSTUDIO_BUNDLED_ROOT="$HERE/usr/bin/RecompStudio/_internal/recompstudio/bundled"
+          exec "$HERE/usr/bin/RecompStudio/RecompStudio" "$@"
           EOF
           chmod +x AppDir/AppRun
           cat > AppDir/RecompStudio.desktop <<'EOF'
@@ -87,6 +104,7 @@ jobs:
           curl -L --fail --retry 3 -o appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
           chmod +x appimagetool.AppImage
           APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool.AppImage AppDir "release/RecompStudio-${{ matrix.target }}.AppImage"
+          cp recompstudio/bundled/UPSTREAM_LICENSES.md release/UPSTREAM_LICENSES.md
 
       - uses: actions/upload-artifact@v4
         with:

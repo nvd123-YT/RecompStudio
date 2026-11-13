@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .registry import app_data_dir, get_framework, frameworks
+from .bundles import bundled_framework_path
 
 
 class FrameworkError(RuntimeError):
@@ -44,9 +45,40 @@ class FrameworkManager:
         self.root = (root or (app_data_dir() / "frameworks")).expanduser()
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def path_for(self, framework_id: str) -> Path:
-        get_framework(framework_id)  # Fail early for unknown IDs.
+    def writable_path_for(self, framework_id: str) -> Path:
+        get_framework(framework_id)
         return self.root / framework_id
+
+    def path_for(self, framework_id: str) -> Path:
+        """Prefer a user-updated checkout, otherwise use the packaged checkout."""
+        writable = self.writable_path_for(framework_id)
+        if (writable / ".git").exists() or (writable / ".git").is_file():
+            return writable
+        bundled = bundled_framework_path(framework_id)
+        return bundled if bundled is not None else writable
+
+    def _ensure_writable_checkout(self, framework_id: str) -> Path:
+        """Copy an embedded checkout into the user data folder before mutation."""
+        destination = self.writable_path_for(framework_id)
+        if (destination / ".git").exists() or (destination / ".git").is_file():
+            return destination
+        bundled = bundled_framework_path(framework_id)
+        if bundled is None:
+            return destination
+        if destination.exists():
+            raise FrameworkError(
+                f"Refusing to replace a non-Git framework directory: {destination}"
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        import shutil
+        try:
+            shutil.copytree(bundled, destination, symlinks=True)
+        except OSError as exc:
+            shutil.rmtree(destination, ignore_errors=True)
+            raise FrameworkError(
+                f"Could not prepare the bundled framework for updating: {exc}"
+            ) from exc
+        return destination
 
     @staticmethod
     def _git(path: Path | None, *args: str, timeout: int = 180) -> str:
@@ -85,6 +117,9 @@ class FrameworkManager:
             raise FrameworkError(
                 f"Refusing to replace the existing non-Git directory: {destination}"
             )
+        bundled = bundled_framework_path(framework_id)
+        if bundled is not None:
+            return bundled
         destination.parent.mkdir(parents=True, exist_ok=True)
         command = ["clone", "--recurse-submodules"]
         ref = item.get("ref")
@@ -99,8 +134,9 @@ class FrameworkManager:
     def update(self, framework_id: str) -> FrameworkStatus:
         item = get_framework(framework_id)
         path = self.path_for(framework_id)
-        if not (path / ".git").exists():
+        if not (path / ".git").exists() and not (path / ".git").is_file():
             raise FrameworkError(f"{item['name']} is not installed. Install it first.")
+        path = self._ensure_writable_checkout(framework_id)
         dirty = bool(self._git(path, "status", "--porcelain"))
         if dirty:
             raise FrameworkError(
@@ -136,6 +172,8 @@ class FrameworkManager:
             return status
         try:
             if fetch:
+                path = self._ensure_writable_checkout(framework_id)
+                status.path = path
                 self._git(path, "fetch", "--all", "--prune", timeout=180)
             status.commit = self._git(path, "rev-parse", "--short", "HEAD")
             status.branch = self._git(path, "branch", "--show-current") or "detached"

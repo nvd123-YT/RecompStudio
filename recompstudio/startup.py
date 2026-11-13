@@ -1,11 +1,12 @@
 """Cross-platform startup diagnostics and packaged-app smoke tests.
 
-This module deliberately uses only the Python standard library until the GUI
-has initialized, so a broken Tk installation can still produce a useful log
-and a native operating-system alert.
+The launcher creates its log before importing the GUI and enables faulthandler,
+so both Python exceptions and fatal interpreter signals leave diagnostics.
 """
 from __future__ import annotations
 
+import atexit
+import faulthandler
 import os
 import platform
 import subprocess
@@ -15,6 +16,11 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
+
+
+_CRASH_LOG_STREAM = None
+_CRASH_LOG_PATH: Path | None = None
+_SHUTDOWN_HOOK_REGISTERED = False
 
 
 def startup_log_path() -> Path:
@@ -33,6 +39,85 @@ def startup_log_path() -> Path:
                 else Path.home() / ".local" / "state")
         base = base / "RecompStudio"
     return base / "startup.log"
+
+
+def begin_startup_session() -> Path:
+    """Create the diagnostic file immediately and capture fatal Python signals."""
+    global _CRASH_LOG_STREAM, _CRASH_LOG_PATH, _SHUTDOWN_HOOK_REGISTERED
+    if _CRASH_LOG_STREAM is not None and _CRASH_LOG_PATH is not None:
+        return _CRASH_LOG_PATH
+
+    candidates = [
+        startup_log_path(),
+        Path(tempfile.gettempdir()) / "RecompStudio-startup.log",
+    ]
+    for path in candidates:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            stream = path.open("a", encoding="utf-8", buffering=1)
+            stream.write(
+                f"\n{'=' * 72}\n"
+                f"Application starting: {datetime.now(timezone.utc).isoformat()}\n"
+                f"Platform: {platform.platform()}\n"
+                f"Python: {sys.version}\n"
+                f"Executable: {sys.executable}\n"
+                f"Arguments: {sys.argv!r}\n"
+            )
+            stream.flush()
+            _CRASH_LOG_STREAM = stream
+            _CRASH_LOG_PATH = path
+            try:
+                faulthandler.enable(file=stream, all_threads=True)
+            except (OSError, RuntimeError, ValueError):
+                stream.write("Warning: faulthandler could not be enabled.\n")
+            if not _SHUTDOWN_HOOK_REGISTERED:
+                atexit.register(_finish_startup_session)
+                _SHUTDOWN_HOOK_REGISTERED = True
+            return path
+        except OSError:
+            continue
+    return candidates[-1]
+
+
+def _finish_startup_session() -> None:
+    """Record a normal exit; a fatal crash will instead be written by faulthandler."""
+    global _CRASH_LOG_STREAM, _CRASH_LOG_PATH
+    stream = _CRASH_LOG_STREAM
+    if stream is None:
+        return
+    try:
+        stream.write(
+            f"Process exited normally: {datetime.now(timezone.utc).isoformat()}\n"
+        )
+        stream.flush()
+    except (OSError, ValueError):
+        pass
+    try:
+        faulthandler.disable()
+    except (RuntimeError, OSError):
+        pass
+    try:
+        stream.close()
+    except OSError:
+        pass
+    _CRASH_LOG_STREAM = None
+    _CRASH_LOG_PATH = None
+
+
+def close_startup_session() -> None:
+    """Close a diagnostic session explicitly (also used by unit tests)."""
+    _finish_startup_session()
+
+
+def _write_startup_note(message: str) -> None:
+    stream = _CRASH_LOG_STREAM
+    if stream is None:
+        return
+    try:
+        stream.write(f"{datetime.now(timezone.utc).isoformat()} {message}\n")
+        stream.flush()
+    except (OSError, ValueError):
+        pass
 
 
 def record_exception(
@@ -153,18 +238,11 @@ def report_exception(
 
 
 def startup_smoke_test() -> None:
-    """Exercise Tk and verify packaged resources without showing a window."""
+    """Exercise the real GUI constructor and verify packaged resources."""
     import tkinter as tk
 
     from .bundles import bundle_manifest, bundle_root, bundled_toolchain
-
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        root.update_idletasks()
-        tk_version = str(root.tk.call("info", "patchlevel"))
-    finally:
-        root.destroy()
+    from .registry import frameworks
 
     resource_root = bundle_root()
     if resource_root is None:
@@ -177,25 +255,57 @@ def startup_smoke_test() -> None:
         raise RuntimeError("The packaged framework manifest is empty or unreadable.")
     if bundled_toolchain() is None:
         raise RuntimeError("The packaged compiler toolchain archive is missing.")
-    # Keep this file-based so the windowed PyInstaller executable can be
-    # smoke-tested on CI runners where stdout/stderr are not attached.
+
+    catalog = frameworks()
+    if not catalog:
+        raise RuntimeError(
+            "The framework catalog is missing or empty. "
+            "Expected recompstudio/data/frameworks.json in the packaged app."
+        )
+
+    # Exercise the same constructor that Finder / the desktop launcher runs.
+    # This catches missing package data and GUI initialization failures that a
+    # Tk-only smoke test cannot detect.
+    from .gui import RecompStudioApp
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        tk_version = str(root.tk.call("info", "patchlevel"))
+        app = RecompStudioApp(root)
+        root.update_idletasks()
+        root.after(180, root.quit)
+        root.mainloop()
+        rendered_rows = len(app.framework_table.get_children())
+        if rendered_rows != len(catalog):
+            raise RuntimeError(
+                f"The GUI loaded {rendered_rows} of {len(catalog)} catalog entries."
+            )
+    finally:
+        root.destroy()
+
     report_path = os.environ.get("RECOMPSTUDIO_STARTUP_SMOKE_REPORT")
     if report_path:
         Path(report_path).write_text(
             f"Tk {tk_version}\nBundle: {resource_root}\n"
-            f"Frameworks: {len(manifest['frameworks'])}\n",
+            f"Frameworks: {len(manifest['frameworks'])}\n"
+            f"Catalog entries: {len(catalog)}\n"
+            f"GUI rows: {rendered_rows}\n",
             encoding="utf-8",
         )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    begin_startup_session()
     try:
         if "--startup-smoke-test" in arguments:
             startup_smoke_test()
+            _write_startup_note("Packaged GUI startup smoke test passed.")
             return 0
         from .gui import launch
         launch()
+        _write_startup_note("GUI event loop exited normally.")
         return 0
     except Exception as exc:
         report_exception(exc, context="Application launch")

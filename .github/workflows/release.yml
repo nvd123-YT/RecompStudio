@@ -61,8 +61,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/bundled;recompstudio/bundled" scripts/launch_gui.py
-          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
+          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/data;recompstudio/data" --add-data "recompstudio/bundled;recompstudio/bundled" scripts/launch_gui.py
+          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli --add-data "recompstudio/data;recompstudio/data" scripts/launch_cli.py
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item dist/RecompStudio release/RecompStudio -Recurse
           Copy-Item dist/recompstudio-cli.exe release/recompstudio-cli.exe
@@ -77,8 +77,8 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --osx-bundle-identifier com.nvd123yt.recompstudio --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
-          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
+          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --osx-bundle-identifier com.nvd123yt.recompstudio --add-data "recompstudio/data:recompstudio/data" --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
+          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli --add-data "recompstudio/data:recompstudio/data" scripts/launch_cli.py
           codesign --force --sign - dist/recompstudio-cli
           codesign --force --deep --sign - dist/RecompStudio.app
           ./dist/recompstudio-cli --version
@@ -94,8 +94,8 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
-          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli scripts/launch_cli.py
+          pyinstaller --noconfirm --clean --onedir --windowed --name RecompStudio --add-data "recompstudio/data:recompstudio/data" --add-data "recompstudio/bundled:recompstudio/bundled" scripts/launch_gui.py
+          pyinstaller --noconfirm --clean --onefile --name recompstudio-cli --add-data "recompstudio/data:recompstudio/data" scripts/launch_cli.py
           mkdir -p AppDir/usr/bin release
           cp -R dist/RecompStudio AppDir/usr/bin/RecompStudio
           cp dist/recompstudio-cli AppDir/usr/bin/recompstudio-cli

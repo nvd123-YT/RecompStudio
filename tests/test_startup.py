@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from recompstudio.startup import (
-    record_exception, startup_error_message, startup_log_path,
+    begin_startup_session, close_startup_session, record_exception,
+    startup_error_message, startup_log_path,
 )
 
 
@@ -27,6 +28,21 @@ class StartupDiagnosticsTests(unittest.TestCase):
             content = written.read_text(encoding="utf-8")
             self.assertIn("test launch", content)
             self.assertIn("RuntimeError: Tk failed to initialize", content)
+
+    def test_startup_session_creates_the_log_before_launch(self):
+        close_startup_session()
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "logs" / "startup.log"
+            with patch.dict(os.environ, {"RECOMPSTUDIO_STARTUP_LOG": str(target)}):
+                try:
+                    written = begin_startup_session()
+                    self.assertEqual(written, target)
+                    self.assertTrue(target.is_file())
+                    content = target.read_text(encoding="utf-8")
+                    self.assertIn("Application starting:", content)
+                    self.assertIn("Executable:", content)
+                finally:
+                    close_startup_session()
 
     def test_reopen_guidance_includes_exact_log_path(self):
         target = Path("/tmp/recompstudio-startup.log")

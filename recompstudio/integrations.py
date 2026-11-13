@@ -77,8 +77,6 @@ build/
 build-*/
 out/
 dist/
-generated/
-generated-*/
 *.log
 *.tmp
 
@@ -109,6 +107,22 @@ firmware/
 *.gg
 *.vb
 *.vboy
+*.md
+*.gen
+*.rom
+*.fds
+*.v64
+*.z64
+*.n64
+*.cdi
+*.xbe
+*.xiso
+*.dol
+*.wad
+*.sav
+*.srm
+*.state
+*.mcs
 """
 
 

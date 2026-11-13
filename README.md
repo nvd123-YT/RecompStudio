@@ -10,6 +10,8 @@ The desktop GUI is the primary workspace; every core operation is also available
 
 The framework catalog is data-driven in `recompstudio/data/frameworks.json`. The GUI reads the same registry as the CLI, and catalog refreshes do not require an application update.
 
+**Packaged builds embed 19 licensed framework/component Git checkouts and a platform-specific RetComM compiler pack.** The source checkouts retain their Git metadata, recursive submodules, licences, and notices. On first launch, RecompStudio installs the bundled compiler pack locally. Frameworks are ready to use without a separate clone step; their writable copies are created only when the user chooses to update them.
+
 ### mstan and RetroPortingToolKit framework families
 
 | System | Framework | Upstream status / limitations |
@@ -31,6 +33,8 @@ The framework catalog is data-driven in `recompstudio/data/frameworks.json`. The
 
 Catalog entries distinguish general frameworks, forks, integration experiments, shared components, and toolchain bundles. Experimental and title-specific entries are visible, but are not presented as production-ready or as generic one-click game converters.
 
+Three repositories are deliberately not embedded in the public packages because they currently have no clear top-level redistribution licence: GenesisRecomp, mstan's GB Recompiled development fork, and SMS/GG Recomp. They remain in the catalog and can be explicitly cloned from upstream. This avoids repackaging source without redistribution permission. The embedded-source licence summary is shipped as `UPSTREAM_LICENSES.md` and is also inside each app bundle.
+
 ### Shared components and toolchains
 
 RecompStudio also manages the shared pieces used by those engines:
@@ -42,7 +46,7 @@ RecompStudio also manages the shared pieces used by those engines:
 
 ## Framework updates
 
-Frameworks are **not copied into the RecompStudio executable** and are not all locked to one release. Each installed framework has its own Git checkout in the per-user data directory:
+Each packaged release includes a snapshot of every redistributable framework at the commit recorded in its bundle manifest. That gives a fresh install an offline-ready framework catalog. The embedded checkout itself is read-only; when a framework is updated, RecompStudio copies only that framework into the per-user data directory and updates the writable copy. Its source path is:
 
 - Windows: `%LOCALAPPDATA%\RecompStudio\frameworks`
 - macOS: `~/Library/Application Support/RecompStudio/frameworks`
@@ -52,7 +56,7 @@ Install clones the upstream repository and recursive submodules. Update fetches 
 
 Game projects pin a specific framework commit as a Git submodule. They move to newer framework revisions only when the project owner chooses **Update Project Framework** and commits the updated submodule pointer. This keeps an existing game project reproducible even as upstream frameworks change frequently.
 
-The app's framework registry is separate from the framework checkouts. **Refresh catalog** updates the list without forcing source updates or requiring a RecompStudio reinstall.
+The app's framework registry is separate from the framework checkouts. **Refresh catalog** updates the list without forcing source updates or requiring a RecompStudio reinstall. Updating the app refreshes its embedded snapshot, while framework updates remain independent after installation.
 
 ## Shared compiler/toolchain packs
 
@@ -64,13 +68,13 @@ recompstudio toolchains install
 recompstudio toolchains update
 ```
 
-RecompStudio fetches the latest compatible RetComM `cmake-clang-v1` release from GitHub at runtime and installs it in the shared RetComM cache. Older version folders are kept side by side so one project does not break because another needs a newer pack. It does not permanently rewrite the machine's PATH.
+Packaged builds include the compatible RetComM `cmake-clang-v1` archive and its licence/third-party notices. First launch installs this archive from the local app resources, so initial toolchain setup does not require a separate download. The Toolchain tab and CLI can then check for a newer upstream release and update it while retaining older version folders. The user PATH is never permanently rewritten.
 
-Platform coverage of the shared compiler pack is Windows x64, macOS universal (Intel and Apple Silicon), and Linux x86_64. macOS still requires Xcode Command Line Tools. Some upstream frameworks have additional or narrower requirements; XboxLLR currently requires Windows-specific MSVC/SDK tooling. The Toolchain tab's diagnostics report what is available.
+The pack provides CMake, Ninja, Clang/LLVM where published, embeddable CPython, zlib, and SDL3 support. It targets Windows x64, macOS universal (Intel and Apple Silicon), and Linux x86_64. macOS still requires Apple's Xcode Command Line Tools/SDK. XboxLLR currently requires Microsoft's MSVC and Windows SDK; those proprietary platform tools are not redistributed. Git is needed for framework updates and source control, and GitHub CLI is used to create repositories with `project publish`. Ghidra/Java are not yet included in the package; the Toolchain tab reports detected optional tools.
 
 ## Install and launch from source
 
-Requirements: Python 3.10+, Git, and Tkinter for the desktop GUI. Git, CMake, Ninja, and a C/C++ compiler are needed by most native framework builds.
+To run from source: Python 3.10+, Git, and Tkinter for the GUI. Packaged releases include their Python runtime, framework snapshot, and compatible RetComM compiler bundle; Git remains required for framework updates and Git/GitHub operations.
 
 ```bash
 git clone https://github.com/nvd123-YT/RecompStudio.git
@@ -140,12 +144,12 @@ The project adapters invoke the framework's current generation/build interfaces 
 
 ## Three-platform releases
 
-The release workflow is configured to produce:
-- Windows x64: GUI executable and CLI executable in a ZIP.
-- macOS: a DMG containing a real `RecompStudio.app` bundle and CLI binary (Intel and Apple Silicon builds).
-- Linux x86_64: AppImage GUI and CLI binary.
+The release workflow builds a platform-specific self-contained app bundle, framework snapshot, and compiler pack:
+- Windows x64: GUI app directory plus CLI executable in a ZIP.
+- macOS: DMGs containing a real `RecompStudio.app` bundle and CLI binary (Intel and Apple Silicon builds).
+- Linux x86_64: AppImage containing the GUI, CLI, frameworks, and compiler archive.
 
-Push a `v*` tag to trigger GitHub Release packaging. Builds are produced by GitHub Actions; source-checkout use does not require downloading a release package.
+Push a `v*` tag to publish GitHub Release assets. `workflow_dispatch` also creates downloadable Actions artifacts for packaging verification. The Linux asset is substantially larger because the bundled Linux compiler/sysroot pack is roughly 833 MB compressed.
 
 ## Legal and source-image policy
 

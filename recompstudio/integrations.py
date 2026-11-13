@@ -127,17 +127,27 @@ firmware/
 """
 
 
+def _command_environment(overrides: dict | None = None) -> dict[str, str]:
+    """Merge toolchain paths with framework-specific environment overrides."""
+    base = managed_environment(toolchain_environment())
+    result = dict(base)
+    if overrides:
+        override_path = overrides.get("PATH")
+        result.update(overrides)
+        if override_path is not None:
+            paths: list[str] = []
+            for entry in [*base.get("PATH", "").split(os.pathsep),
+                          *str(override_path).split(os.pathsep)]:
+                if entry and entry not in paths:
+                    paths.append(entry)
+            result["PATH"] = os.pathsep.join(paths)
+    return result
+
+
 def _run(command: Sequence[str], cwd: Path, timeout: int = 1800,
          env: dict | None = None) -> str:
     try:
-        child_env = managed_environment(toolchain_environment())
-        if env:
-            supplied_path = env.get("PATH", "")
-            child_env.update(env)
-            pack = toolchain_environment().get("RETCOMM_TOOLCHAIN_DIR")
-            if pack:
-                pack_bins = [str(Path(pack) / "bin"), str(Path(pack) / "python" / "bin"), str(Path(pack) / "python")]
-                child_env["PATH"] = os.pathsep.join([p for p in pack_bins if Path(p).is_dir()] + ([supplied_path] if supplied_path else []))
+        child_env = _command_environment(env)
         proc = subprocess.run(
             list(map(str, command)), cwd=cwd, env=child_env,
             capture_output=True, text=True, encoding="utf-8",

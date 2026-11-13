@@ -33,7 +33,7 @@ The framework catalog is data-driven in `recompstudio/data/frameworks.json`. The
 
 Catalog entries distinguish general frameworks, forks, integration experiments, shared components, and toolchain bundles. Experimental and title-specific entries are visible, but are not presented as production-ready or as generic one-click game converters.
 
-Three repositories are deliberately not embedded in the public packages because they currently have no clear top-level redistribution licence: GenesisRecomp, mstan's GB Recompiled development fork, and SMS/GG Recomp. They remain in the catalog and can be explicitly cloned from upstream. This avoids repackaging source without redistribution permission. The embedded-source licence summary is shipped as `UPSTREAM_LICENSES.md` and is also inside each app bundle.
+Three repositories are deliberately not embedded in the public packages because they currently have no clear top-level redistribution licence: GenesisRecomp, mstan's GB Recompiled development fork, and SMS/GG Recomp. The mstan N64Recomp fork is also deferred because one of its recursive submodules points to an unavailable commit; the separately maintained N64Recomp upstream checkout is bundled. These entries remain in the catalog for upstream tracking, but RecompStudio does not package unlicensed or incomplete source snapshots. The embedded-source licence summary is shipped as `UPSTREAM_LICENSES.md` and is also inside each app bundle.
 
 ### Shared components and toolchains
 

@@ -159,7 +159,7 @@ class RecompStudioApp:
         self.publish_var = tk.StringVar()
         self.visibility_var = tk.StringVar(value="private")
         self._form_row(form, 0, "Game / project name", ttk.Entry(form, textvariable=self.name_var, width=48))
-        choices = [item["id"] for item in frameworks() if item.get("category") == "framework"]
+        choices = [item["id"] for item in frameworks() if item.get("category") in {"framework", "integration-fork"}]
         self.framework_combo = ttk.Combobox(form, textvariable=self.framework_var, values=choices, state="readonly", width=45)
         self.framework_combo.grid(row=1, column=1, sticky="ew", pady=6)
         ttk.Label(form, text="Framework", background="#182131").grid(row=1, column=0, sticky="w", pady=6)

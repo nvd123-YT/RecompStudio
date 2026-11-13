@@ -747,10 +747,36 @@ def update_project_framework(project_path: Path) -> str:
     _run(["git", "-C", submodule, "fetch", "--all", "--prune"], root, timeout=900)
     ref = manifest["framework"].get("ref")
     if ref:
+        # Explicit catalog branches (for example the mstan GCN IPL branch).
         _run(["git", "-C", submodule, "checkout", str(ref)], root)
         _run(["git", "-C", submodule, "pull", "--ff-only", "origin", str(ref)], root, timeout=900)
     else:
-        _run(["git", "-C", submodule, "pull", "--ff-only"], root, timeout=900)
+        # A freshly initialized submodule is normally detached at its pinned
+        # commit. Resolve the upstream default branch and reattach before pull;
+        # plain "git pull" in detached HEAD fails on a clean clone.
+        symref = _run(
+            ["git", "-C", submodule, "ls-remote", "--symref", "origin", "HEAD"],
+            root, timeout=300,
+        )
+        branch = next(
+            (line.split()[1].removeprefix("refs/heads/")
+             for line in symref.splitlines()
+             if line.startswith("ref: refs/heads/") and len(line.split()) >= 2),
+            "",
+        )
+        if not branch:
+            raise FrameworkError(
+                "Could not determine the framework's upstream default branch. "
+                "The pinned revision was left unchanged."
+            )
+        _run(
+            ["git", "-C", submodule, "checkout", "-B", branch, f"origin/{branch}"],
+            root,
+        )
+        _run(
+            ["git", "-C", submodule, "pull", "--ff-only", "origin", branch],
+            root, timeout=900,
+        )
     _run(["git", "-C", submodule, "submodule", "update", "--init", "--recursive"], root, timeout=900)
     commit = _git(root, "-C", submodule, "rev-parse", "HEAD")
     manifest["framework"]["pinned_commit"] = commit

@@ -674,8 +674,9 @@ def build_project(project_path: Path) -> str:
         output += "\n" + _run(["cmake", "--build", build, "--config", "Release", "--parallel"], root, timeout=7200)
         return output
     if item["id"] in {"psxrecomp", "snesrecomp"}:
-        build = root / "build"
-        if not build.exists():
+        candidates = [root / "build-release", root / "build"] if item["id"] == "psxrecomp" else [root / "build", root / "build-release"]
+        build = next((path for path in candidates if path.exists()), None)
+        if build is None:
             raise FrameworkError("No configured build directory found. Run Recompile first.")
         return _run(["cmake", "--build", build, "--config", "Release", "--parallel"], root, timeout=7200)
     raise FrameworkError(

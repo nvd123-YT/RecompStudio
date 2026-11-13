@@ -13,6 +13,7 @@ from .projects import (
     recompile_project, set_project_inputs, update_project_framework,
 )
 from .registry import frameworks, refresh_catalog
+from .toolchains import install_latest, status as toolchain_status
 
 
 def _print_frameworks() -> None:
@@ -45,6 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
     status = fw_commands.add_parser("status", help="Show installed commits and pending updates")
     status.add_argument("--fetch", action="store_true", help="Fetch upstream before checking for updates")
     fw_commands.add_parser("refresh-catalog", help="Download the latest RecompStudio framework registry")
+
+    tc = commands.add_parser("toolchains", help="Install and update the shared RetComM compiler toolchain")
+    tc_commands = tc.add_subparsers(dest="toolchain_command", required=True)
+    tc_commands.add_parser("status", help="Check the latest pack and local installation")
+    tc_commands.add_parser("install", help="Download and install the latest host-compatible pack")
+    tc_commands.add_parser("update", help="Update the shared pack while keeping older versions")
 
     doctor = commands.add_parser("doctor", help="Detect the local build toolchain")
     doctor.add_argument("--json", action="store_true", help="Print machine-readable JSON")
@@ -96,6 +103,15 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "doctor":
             return print_report(args.json)
+        if args.command == "toolchains":
+            if args.toolchain_command == "status":
+                info = toolchain_status()
+                for key, value in info.items():
+                    print(f"{key}: {value}")
+                return 0 if info.get("installed") else 1
+            installed = install_latest(status=lambda msg: print(msg, flush=True))
+            print(f"Shared toolchain installed at {installed}")
+            return 0
         if args.command == "frameworks":
             manager = FrameworkManager()
             if args.framework_command == "list":

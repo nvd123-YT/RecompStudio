@@ -21,6 +21,7 @@ from .projects import (
     recompile_project, set_project_inputs, update_project_framework,
 )
 from .registry import frameworks, refresh_catalog
+from .toolchains import install_latest, status as toolchain_status
 
 
 class RecompStudioApp:
@@ -201,7 +202,10 @@ class RecompStudioApp:
         self.tabs.add(page, text="Toolchain")
         ttk.Label(page, text="Local build environment", style="Title.TLabel").pack(anchor="w", pady=(0, 12))
         ttk.Label(page, text="Detect the compiler and utilities each framework may need. RecompStudio reports missing tools but does not run privileged installers.", style="Muted.TLabel", wraplength=900).pack(anchor="w")
-        ttk.Button(page, text="Run environment check", style="Accent.TButton", command=self._check_tools).pack(anchor="w", pady=12)
+        tool_actions = ttk.Frame(page)
+        tool_actions.pack(fill="x", pady=12)
+        ttk.Button(tool_actions, text="Install / update shared toolchain", style="Accent.TButton", command=self._install_toolchain).pack(side="left")
+        ttk.Button(tool_actions, text="Run environment check", command=self._check_tools).pack(side="left", padx=8)
         self.tools_text = tk.Text(page, height=17, bg="#182131", fg="#e8edf5", insertbackground="white", relief="flat", wrap="word", padx=12, pady=12)
         self.tools_text.pack(fill="both", expand=True)
         self.tools_text.insert("1.0", "Select Run environment check to inspect Git, Python, CMake, Ninja, native compilers, Java, Ghidra, and GitHub CLI.")
@@ -246,6 +250,9 @@ class RecompStudioApp:
         try:
             while True:
                 kind, result, callback = self.events.get_nowait()
+                if kind == "progress":
+                    self.status_var.set(str(result))
+                    continue
                 if kind == "success":
                     self.status_var.set("Complete")
                     if isinstance(result, str) and result:
@@ -421,11 +428,26 @@ class RecompStudioApp:
             return False
         return True
 
+
+    def _install_toolchain(self) -> None:
+        def install():
+            def progress(done, total):
+                if total and (done == total or done % (8 * 1024 * 1024) < 1024 * 1024):
+                    message = f"Downloading shared toolchain: {done // (1024 * 1024)} / {total // (1024 * 1024)} MB"
+                    self.events.put(("progress", message, None))
+            return str(install_latest(progress=progress))
+
+        self._task("Checking shared toolchain release…", install, lambda result: self._check_tools() if result else None)
+
     def _check_tools(self) -> None:
         report = doctor_report()
+        pack = report.get("shared_toolchain", {})
         lines = [
             f"Platform: {report['platform']}",
             f"Python: {report['python']}",
+            f"Shared RetComM toolchain: {'installed' if pack.get('installed') else 'not installed'}",
+            f"Toolchain version: {pack.get('version') or '—'}",
+            f"Toolchain path: {pack.get('path') or '—'}",
             "",
         ]
         for item in report["checks"]:
